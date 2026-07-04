@@ -11372,7 +11372,7 @@ Only output the JSON. No markdown.`;
       var thisSunday = new Date(today);
       thisSunday.setDate(today.getDate() - today.getDay());
       var weeks = [];
-      for (var w = 0; w <= 4; w++) {
+      for (var w = 4; w >= 0; w--) {
         var sunday = new Date(thisSunday);
         sunday.setDate(thisSunday.getDate() - w * 7);
         var days = [];
