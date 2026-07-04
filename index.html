@@ -5867,7 +5867,7 @@ function PantryTile({
   const tileCol = catCol(CAT_COLOR[item.cat] || "#888");
   const active = item.type === "quantity" ? (val || 0) > 0 : val === true;
   const isLightTheme = C.bg === "#f5f0ea" || C.bg === "#ebebeb" || C.bg === "#f0f0f0";
-  const processedBg = isLightTheme ? "#f5e6d3" : "#2e2115";
+  const processedBg = isLightTheme ? "#f6dcdc" : "#2e1a1a";
   const pressTimer = React.useRef(null);
   const longPressed = React.useRef(false);
   const startPress = () => {
