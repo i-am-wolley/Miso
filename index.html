@@ -10394,6 +10394,7 @@ Only output the JSON. No markdown.`;
         var entryId = missingMap[ing] && missingMap[ing].itemId;
         var isStockedNow = entryId ? (!!stock[entryId]||!!stock[String(entryId)]) : false;
         var entry = missingMap[ing];
+        var uniqueDishes = [...new Set(entry.dishes)];
         return /*#__PURE__*/React.createElement("div", {
           key: ing,
           onClick: function(){
@@ -10407,7 +10408,7 @@ Only output the JSON. No markdown.`;
               });
             }
           },
-          title: "For: "+entry.dishes.join(", ")+(entry.isAI?" (AI dish)":""),
+          title: "For: "+uniqueDishes.join(", ")+(entry.isAI?" (AI dish)":""),
           style:{
             padding:"5px 10px",borderRadius:20,fontSize:13,fontWeight:600,
             background: isStockedNow ? C.card : (entry.isStaple ? "rgba(201,163,106,0.14)" : C.bg),
@@ -10420,6 +10421,9 @@ Only output the JSON. No markdown.`;
           }
         },
           ing,
+          uniqueDishes.length>1 && /*#__PURE__*/React.createElement("span", {
+            style:{fontSize:11, fontWeight:600, color: C.dim2}
+          }, "×"+uniqueDishes.length),
           entry.isStaple && /*#__PURE__*/React.createElement("span", {
             style:{fontSize:13, fontWeight:600, color: isStockedNow ? C.dim2 : "#c9a36a"}
           }, "S"),
