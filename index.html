@@ -6941,6 +6941,8 @@ function App() {
   // New features
   const [lockedDays, setLockedDays] = useState({});
   const [swapModal, setSwapModal] = useState(null); // {day, mealCat, current}
+  const [swapShowUnstocked, setSwapShowUnstocked] = useState(false);
+  useEffect(() => { setSwapShowUnstocked(false); }, [swapModal]);
   const [confirmedDays, setConfirmedDays] = useState({});
   const [activityLog, setActivityLog] = useState([]);
   const [dayLog, setDayLog] = useState({}); // { "YYYY-MM-DD": {date, color, dineOutCount, processedCount} }
@@ -12678,10 +12680,20 @@ Only output the JSON. No markdown.`;
           var cats=Array.isArray(d.mealCats)?d.mealCats:[d.mealCat||"Dinner"];
           return cats.includes(swapModal.mealCat) && d.name!==swapModal.current;
         });
-        var stocked=mealCatDishes.filter(function(d){
+        var isStockedDish=function(d){
           return !d.ingredients||d.ingredients.length===0||
             d.ingredients.every(function(ing){return stockedItems.some(function(si){return si.name.toLowerCase()===ing.toLowerCase();});});
-        });
+        };
+        var stocked=mealCatDishes.filter(isStockedDish);
+        var unstocked=mealCatDishes.filter(function(d){return !isStockedDish(d);});
+        var pickDish=function(d){
+          haptic("medium");
+          _setSwapTarget(function(prev){
+            return Object.assign({},prev,{plan:Object.assign({},prev.plan,
+              {[swapModal.day]:Object.assign({},prev.plan[swapModal.day],{[swapModal.mealCat]:d.name})})});
+          });
+          setSwapModal(null); setSwapError("");
+        };
         return /*#__PURE__*/React.createElement("div",{
           style:{background:C.bg,border:"1px solid "+C.border,borderRadius:7,padding:"10px 12px"}
         },
@@ -12692,18 +12704,27 @@ Only output the JSON. No markdown.`;
                 stocked.slice(0,8).map(function(d){
                   return /*#__PURE__*/React.createElement("button",{
                     key:d.name,
-                    onClick:function(){
-                      haptic("medium");
-                      _setSwapTarget(function(prev){
-                        return Object.assign({},prev,{plan:Object.assign({},prev.plan,
-                          {[swapModal.day]:Object.assign({},prev.plan[swapModal.day],{[swapModal.mealCat]:d.name})})});
-                      });
-                      setSwapModal(null); setSwapError("");
-                    },
+                    onClick:function(){ pickDish(d); },
                     style:{...pill(false),fontSize:12,padding:"4px 8px"}
                   },d.name);
                 })
-              )
+              ),
+          unstocked.length>0 && !swapShowUnstocked && /*#__PURE__*/React.createElement("button",{
+            onClick:function(){ haptic("light"); setSwapShowUnstocked(true); },
+            style:{background:"none",border:"none",color:C.dim2,fontSize:11,cursor:"pointer",fontFamily:C.font,padding:0,marginTop:8,textDecoration:"underline"}
+          },"+"+unstocked.length+" more (missing ingredients)"),
+          unstocked.length>0 && swapShowUnstocked && /*#__PURE__*/React.createElement("div",{style:{marginTop:8}},
+            /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:C.dim2,marginBottom:5}},"Missing some ingredients — they'll be added to your shopping list"),
+            /*#__PURE__*/React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:5}},
+              unstocked.slice(0,8).map(function(d){
+                return /*#__PURE__*/React.createElement("button",{
+                  key:d.name,
+                  onClick:function(){ pickDish(d); },
+                  style:{...pill(false),fontSize:12,padding:"4px 8px",opacity:0.7,borderStyle:"dashed"}
+                },d.name);
+              })
+            )
+          )
         );
       })(),
       // DINE OUT option
