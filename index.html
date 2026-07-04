@@ -3356,6 +3356,7 @@ const SK_SYNC = {
   dishNameFont:    "pantryos-dishnamefont",
   apiCost:         "pantryos-apicost",
   activityLog:     "pantryos-activitylog",
+  dayLog:          "pantryos-daylog",
 };
 // Keys that stay device-local forever (hardware prefs, transient state)
 const SK_LOCAL = {
@@ -6942,6 +6943,7 @@ function App() {
   const [swapModal, setSwapModal] = useState(null); // {day, mealCat, current}
   const [confirmedDays, setConfirmedDays] = useState({});
   const [activityLog, setActivityLog] = useState([]);
+  const [dayLog, setDayLog] = useState({}); // { "YYYY-MM-DD": {date, color, dineOutCount, processedCount} }
   const [activitySection, setActivitySection] = useState("logs"); // "logs" | "metrics"
   const [swapLoading, setSwapLoading] = useState(false);
   const [swapError, setSwapError] = useState("");
@@ -7172,6 +7174,8 @@ function App() {
       if (scd) setConfirmedDays(JSON.parse(scd));
       const sal = storage.get(SK.activityLog);
       if (sal) setActivityLog(JSON.parse(sal));
+      const sdl = storage.get(SK.dayLog);
+      if (sdl) setDayLog(JSON.parse(sdl));
       const sgn = storage.get(SK.greetingName);
       if (sgn !== null) setGreetingName(JSON.parse(sgn));
     } catch (e) {
@@ -7260,6 +7264,7 @@ function App() {
         try { var nm = storage.get(SK.nextMenu); setNextMenu(nm ? JSON.parse(nm) : null); } catch(e) {}
         try { var cd = storage.get(SK.confirmedDays); if (cd) setConfirmedDays(JSON.parse(cd)); } catch(e) {}
         try { var al = storage.get(SK.activityLog); if (al) setActivityLog(JSON.parse(al)); } catch(e) {}
+        try { var dl = storage.get(SK.dayLog); if (dl) setDayLog(JSON.parse(dl)); } catch(e) {}
         try { var ld = storage.get(SK.lockedDays); if (ld) setLockedDays(JSON.parse(ld)); } catch(e) {}
         try { var di = storage.get(SK.dishes); if (di) setDishes(JSON.parse(di)); } catch(e) {}
         try { var st = storage.get(SK.stock); if (st) setStock(JSON.parse(st)); } catch(e) {}
@@ -7424,6 +7429,9 @@ function App() {
   useEffect(() => {
     if (loaded && authReady) storage.set(SK.activityLog, JSON.stringify(activityLog));
   }, [activityLog, loaded, authReady]);
+  useEffect(() => {
+    if (loaded && authReady) storage.set(SK.dayLog, JSON.stringify(dayLog));
+  }, [dayLog, loaded, authReady]);
   useEffect(() => {
     if (loaded && authReady) storage.set(SK.autoBackup, JSON.stringify(autoBackup));
   }, [autoBackup, loaded, authReady]);
@@ -8847,9 +8855,6 @@ Only output the JSON. No markdown.`;
           if (idx >= pastThreshold) return; // only past days
           if (confirmedDays && confirmedDays[dayName]) return; // already confirmed
           if (!activeMenu.plan[dayName] || Object.keys(activeMenu.plan[dayName]).length === 0) { console.log("[Scheduler] no plan for "+dayName); return; }
-          const dayPlan = activeMenu.plan[dayName];
-          const allDineOut = Object.values(dayPlan).every(function(d) { return d && d.indexOf("Dine Out") >= 0; });
-          if (allDineOut) return;
           console.log("[Scheduler] confirming "+dayName);
           confirmDay(dayName, true); // silent — no toast for auto-confirm
         });
@@ -9243,6 +9248,53 @@ Only output the JSON. No markdown.`;
       default:                  return who + " updated " + list;
     }
   }
+  // Snapshot a confirmed day's home-cooked/dine-out/processed-food composition for the Metrics
+  // tracker. Computed once, at the moment the day is confirmed (locked forever after).
+  function dateKeyForDay(weekKey, dayName) {
+    var parts = weekKey.split("-").map(Number); // [year, month, date] — Sunday of that week
+    var sunday = new Date(parts[0], parts[1] - 1, parts[2]);
+    var d = new Date(sunday);
+    d.setDate(sunday.getDate() + DAYS.indexOf(dayName));
+    var mm = String(d.getMonth() + 1).padStart(2, "0");
+    var dd = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + mm + "-" + dd;
+  }
+  function computeDaySnapshot(dayPlan) {
+    var pantryByNameSnap = {};
+    items.forEach(function(it){ pantryByNameSnap[it.name.toLowerCase().trim()] = it; });
+    function findPantryItemSnap(ing) {
+      var k = String(ing).toLowerCase().trim();
+      if (pantryByNameSnap[k]) return pantryByNameSnap[k];
+      var kn = k.replace(/s$/, "");
+      if (pantryByNameSnap[kn]) return pantryByNameSnap[kn];
+      return items.find(function(it){ var n = it.name.toLowerCase().trim(); return n.includes(k) || k.includes(n); }) || null;
+    }
+    var dineOutCount = 0;
+    var processedIds = new Set();
+    Object.values(dayPlan).forEach(function(dishName) {
+      if (!dishName) return;
+      if (dishName.indexOf("Dine Out") >= 0) { dineOutCount++; return; }
+      var dish = dishes.find(function(d){ return d.name === dishName; });
+      var rawIngs = dish ? (dish.ingredients || []) : (aiDishIngredients[dishName] || []);
+      rawIngs.forEach(function(ing) {
+        var pantryItem;
+        var ingId = Number(ing);
+        if (!dish && !isNaN(ingId) && ingId > 0) {
+          pantryItem = items.find(function(it){ return it.id === ingId || it.id === ing; });
+        } else {
+          pantryItem = findPantryItemSnap(ing);
+        }
+        if (pantryItem && pantryItem.isProcessed) processedIds.add(pantryItem.id);
+      });
+    });
+    var color;
+    if (dineOutCount > 1 || processedIds.size > 6) color = "red";
+    else if (dineOutCount === 1) color = "yellow";
+    else if (processedIds.size === 0) color = "blue";
+    else if (processedIds.size <= 3) color = "green";
+    else color = "lightgreen";
+    return { dineOutCount: dineOutCount, processedCount: processedIds.size, color: color };
+  }
   function confirmDay(dayName, silent) {
     var activeMenu = menu; // confirm only from current week plan
     if (!activeMenu || !activeMenu.plan || !activeMenu.plan[dayName]) return;
@@ -9259,6 +9311,17 @@ Only output the JSON. No markdown.`;
     setConfirmedDays(function(prev){
       var next = Object.assign({},prev,{[dayName]:true});
       console.log("[confirmDay] "+dayName+" → confirmedDays now:", JSON.stringify(next));
+      return next;
+    });
+    var dateKey = dateKeyForDay(activeMenu.weekKey, dayName);
+    var snap = Object.assign({ date: dateKey }, computeDaySnapshot(dayPlan));
+    setDayLog(function(prev) {
+      var next = Object.assign({}, prev);
+      next[dateKey] = snap;
+      var keys = Object.keys(next).sort();
+      if (keys.length > 35) {
+        keys.slice(0, keys.length - 35).forEach(function(k){ delete next[k]; });
+      }
       return next;
     });
     if (!silent) showToast("Day confirmed!", "success");
@@ -11284,9 +11347,115 @@ Only output the JSON. No markdown.`;
             );
           }))
     ),
-    activitySection === "metrics" && /*#__PURE__*/React.createElement("div", {
-      style: { color: C.dim, fontSize: 14, padding: 20, textAlign: "center" }
-    }, "Metrics coming soon.")
+    activitySection === "metrics" && (function() {
+      var DAY_COLOR_HEX = { blue: "#4A90D9", green: "#4C8C3C", lightgreen: "#A8D08D", yellow: "#E3B23C", red: "#c0392b" };
+      var DAY_COLOR_LABEL = {
+        blue: "Home-cooked, no processed food",
+        green: "Home-cooked, 1–3 processed items",
+        lightgreen: "Home-cooked, 4–6 processed items",
+        yellow: "1 slot dine-out",
+        red: "2+ dine-out, or 7+ processed items"
+      };
+      // ── 5-week tracker ──
+      var today = new Date();
+      var thisSunday = new Date(today);
+      thisSunday.setDate(today.getDate() - today.getDay());
+      var weeks = [];
+      for (var w = 4; w >= 0; w--) {
+        var sunday = new Date(thisSunday);
+        sunday.setDate(thisSunday.getDate() - w * 7);
+        var days = [];
+        for (var i = 0; i < 7; i++) {
+          var d = new Date(sunday);
+          d.setDate(sunday.getDate() + i);
+          var key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+          days.push({ date: key, dayNum: d.getDate(), isFuture: d > today, snap: dayLog[key] || null });
+        }
+        weeks.push(days);
+      }
+      // ── This week's stat tiles ──
+      var weekPlan = (menu && menu.plan) || {};
+      var totalSlots = 0, dineOutSlots = 0;
+      Object.values(weekPlan).forEach(function(dp){
+        if (!dp) return;
+        Object.values(dp).forEach(function(v){ if (!v) return; totalSlots++; if (v.indexOf("Dine Out") >= 0) dineOutSlots++; });
+      });
+      var homeCookedSlots = totalSlots - dineOutSlots;
+      var stockedForMetrics = items.filter(function(it){ return !!stock[it.id] || !!stock[String(it.id)]; });
+      var processedStocked = stockedForMetrics.filter(function(it){ return it.isProcessed; }).length;
+      var processedPct = stockedForMetrics.length ? Math.round(processedStocked / stockedForMetrics.length * 100) : 0;
+      var activeMenuForMetrics = nextMenu || menu;
+      var weekDishNamesM = new Set();
+      if (activeMenuForMetrics && activeMenuForMetrics.plan) {
+        Object.values(activeMenuForMetrics.plan).forEach(function(dp){
+          if (!dp) return;
+          Object.values(dp).forEach(function(v){ if (v && v.indexOf("Dine Out") < 0) weekDishNamesM.add(v); });
+        });
+      }
+      var fruitVegIds = new Set();
+      weekDishNamesM.forEach(function(dishName){
+        var dish = dishes.find(function(dd){ return dd.name === dishName; });
+        var rawIngs = dish ? (dish.ingredients||[]) : (aiDishIngredients[dishName]||[]);
+        rawIngs.forEach(function(ing){
+          var pantryItem;
+          var ingId = Number(ing);
+          if (!dish && !isNaN(ingId) && ingId > 0) {
+            pantryItem = items.find(function(it){ return it.id === ingId || it.id === ing; });
+          } else {
+            var k = String(ing).toLowerCase().trim();
+            pantryItem = items.find(function(it){ return it.name.toLowerCase().trim() === k; }) ||
+              items.find(function(it){ var n = it.name.toLowerCase().trim(); return n.includes(k) || k.includes(n); });
+          }
+          if (pantryItem && (pantryItem.cat === "fruit" || pantryItem.cat === "veg")) fruitVegIds.add(pantryItem.id);
+        });
+      });
+      var tileStyle = { background: C.card, border: "1px solid " + C.border2, borderRadius: 12, padding: "14px 16px", marginBottom: 8 };
+      var tileLabelStyle = { fontSize: 11, color: C.dim, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6 };
+      var tileValueStyle = { fontSize: 20, fontWeight: 800, color: C.white };
+      return /*#__PURE__*/React.createElement("div", null,
+        /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "Last 5 weeks"),
+        /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 } },
+          weeks.map(function(week, wi) {
+            return /*#__PURE__*/React.createElement("div", { key: wi, style: { display: "flex", gap: 4 } },
+              week.map(function(day) {
+                return /*#__PURE__*/React.createElement("div", {
+                  key: day.date,
+                  title: day.snap ? (day.date + " — " + DAY_COLOR_LABEL[day.snap.color]) : day.date,
+                  style: {
+                    flex: 1, aspectRatio: "1", borderRadius: 6,
+                    background: day.snap ? DAY_COLOR_HEX[day.snap.color] : (day.isFuture ? "transparent" : C.bg),
+                    border: "1px solid " + (day.snap ? DAY_COLOR_HEX[day.snap.color] : C.border2),
+                    opacity: day.isFuture ? 0.3 : 1
+                  }
+                });
+              })
+            );
+          })
+        ),
+        /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 20 } },
+          Object.keys(DAY_COLOR_HEX).map(function(c){
+            return /*#__PURE__*/React.createElement("div", { key: c, style: { display: "flex", alignItems: "center", gap: 5 } },
+              /*#__PURE__*/React.createElement("div", { style: { width: 10, height: 10, borderRadius: 3, background: DAY_COLOR_HEX[c] } }),
+              /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: C.dim2 } }, DAY_COLOR_LABEL[c])
+            );
+          })
+        ),
+        /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "This week"),
+        /*#__PURE__*/React.createElement("div", { style: tileStyle },
+          /*#__PURE__*/React.createElement("div", { style: tileLabelStyle }, "Home-cooked vs. dine-out"),
+          /*#__PURE__*/React.createElement("div", { style: tileValueStyle }, homeCookedSlots + " home-cooked · " + dineOutSlots + " dine-out")
+        ),
+        /*#__PURE__*/React.createElement("div", { style: tileStyle },
+          /*#__PURE__*/React.createElement("div", { style: tileLabelStyle }, "Processed food share of pantry"),
+          /*#__PURE__*/React.createElement("div", { style: tileValueStyle }, processedPct + "%"),
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim2, marginTop: 2 } }, processedStocked + " of " + stockedForMetrics.length + " stocked items")
+        ),
+        /*#__PURE__*/React.createElement("div", { style: tileStyle },
+          /*#__PURE__*/React.createElement("div", { style: tileLabelStyle }, "Fruits & veg picked this week"),
+          /*#__PURE__*/React.createElement("div", { style: tileValueStyle }, fruitVegIds.size + " different")
+        )
+      );
+    })()
   ), /*#__PURE__*/React.createElement(Modal, {
     open: addItemModal,
     onClose: () => setAddItemModal(false),
