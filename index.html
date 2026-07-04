@@ -11367,23 +11367,18 @@ Only output the JSON. No markdown.`;
         mixed: "One meal out",
         heavy: "Convenience day"
       };
-      // ── 5-week tracker ──
+      // ── 35-day rolling tracker — today is always the bottom-right square, oldest (34 days
+      // ago) is always top-left. Shifts by one square every day, not once a week. ──
       var today = new Date();
-      var thisSunday = new Date(today);
-      thisSunday.setDate(today.getDate() - today.getDay());
-      var weeks = [];
-      for (var w = 4; w >= 0; w--) {
-        var sunday = new Date(thisSunday);
-        sunday.setDate(thisSunday.getDate() - w * 7);
-        var days = [];
-        for (var i = 0; i < 7; i++) {
-          var d = new Date(sunday);
-          d.setDate(sunday.getDate() + i);
-          var key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-          days.push({ date: key, dayNum: d.getDate(), isFuture: d > today, snap: dayLog[key] || null });
-        }
-        weeks.push(days);
+      var last35 = [];
+      for (var offset = 34; offset >= 0; offset--) {
+        var d = new Date(today);
+        d.setDate(today.getDate() - offset);
+        var key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+        last35.push({ date: key, snap: dayLog[key] || null });
       }
+      var weeks = [];
+      for (var r = 0; r < 5; r++) weeks.push(last35.slice(r * 7, r * 7 + 7));
       // ── This week's stat tiles ──
       var weekPlan = (menu && menu.plan) || {};
       var totalSlots = 0, dineOutSlots = 0;
@@ -11447,7 +11442,7 @@ Only output the JSON. No markdown.`;
             /*#__PURE__*/React.createElement("div", { style: squareCaptionStyle }, "fruits & veg")
           )
         ),
-        /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "Last 5 weeks"),
+        /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "Last 35 days"),
         /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 } },
           weeks.map(function(week, wi) {
             return /*#__PURE__*/React.createElement("div", { key: wi, style: { display: "flex", gap: 4 } },
@@ -11457,9 +11452,8 @@ Only output the JSON. No markdown.`;
                   title: day.snap ? (day.date + " — " + DAY_COLOR_LABEL[day.snap.color]) : day.date,
                   style: {
                     flex: 1, aspectRatio: "1", borderRadius: 6,
-                    background: day.snap ? DAY_COLOR_HEX[day.snap.color] : (day.isFuture ? "transparent" : C.bg),
-                    border: "1px solid " + (day.snap ? DAY_COLOR_HEX[day.snap.color] : C.border2),
-                    opacity: day.isFuture ? 0.3 : 1
+                    background: day.snap ? DAY_COLOR_HEX[day.snap.color] : C.bg,
+                    border: "1px solid " + (day.snap ? DAY_COLOR_HEX[day.snap.color] : C.border2)
                   }
                 });
               })
