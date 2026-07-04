@@ -1285,6 +1285,22 @@ function Icon({
     x2: "22",
     y2: "12"
   })));
+  if (name === "activityTab") return /*#__PURE__*/React.createElement("span", {
+    style: wrap
+  }, /*#__PURE__*/React.createElement("svg", {
+    viewBox: "0 0 24 24",
+    width: w,
+    height: h,
+    fill: p.fill,
+    stroke: p.stroke,
+    strokeWidth: p.strokeWidth,
+    strokeLinecap: p.strokeLinecap,
+    strokeLinejoin: p.strokeLinejoin
+  }, /*#__PURE__*/React.createElement("circle", {
+    cx: "12", cy: "12", r: "9"
+  }), /*#__PURE__*/React.createElement("polyline", {
+    points: "12,7 12,12 16,14"
+  })));
   if (name === "cart") return /*#__PURE__*/React.createElement("span", {
     style: wrap
   }, /*#__PURE__*/React.createElement("svg", {
@@ -3339,6 +3355,7 @@ const SK_SYNC = {
   activeAllergens: "pantryos-allergens",
   dishNameFont:    "pantryos-dishnamefont",
   apiCost:         "pantryos-apicost",
+  activityLog:     "pantryos-activitylog",
 };
 // Keys that stay device-local forever (hardware prefs, transient state)
 const SK_LOCAL = {
@@ -6589,6 +6606,7 @@ function DayCardCarousel({
       setDishes(p => [...p, { id: Date.now(), name, mealCats: [mealCat], ingredients: resolveAiIngredients(name, items, aiDishIngredients),
         mustInclude: false, mustIncludeIngredient: "", timesPerWeek: 0,
         pairWith: [], makesLeftovers: false, leftoverMeal: "", leftoverSlot: "" }]);
+      logActivity("dish_created", name);
     }
   });
 
@@ -6923,6 +6941,8 @@ function App() {
   const [lockedDays, setLockedDays] = useState({});
   const [swapModal, setSwapModal] = useState(null); // {day, mealCat, current}
   const [confirmedDays, setConfirmedDays] = useState({});
+  const [activityLog, setActivityLog] = useState([]);
+  const [activitySection, setActivitySection] = useState("logs"); // "logs" | "metrics"
   const [swapLoading, setSwapLoading] = useState(false);
   const [swapError, setSwapError] = useState("");
   const [nutrition, setNutrition] = useState({}); // {day: {flags:[], ok:bool}}
@@ -7150,6 +7170,8 @@ function App() {
       if (sob) setOnboarded(JSON.parse(sob));else setOnboarded(false);
       const scd = storage.get(SK.confirmedDays);
       if (scd) setConfirmedDays(JSON.parse(scd));
+      const sal = storage.get(SK.activityLog);
+      if (sal) setActivityLog(JSON.parse(sal));
       const sgn = storage.get(SK.greetingName);
       if (sgn !== null) setGreetingName(JSON.parse(sgn));
     } catch (e) {
@@ -7237,6 +7259,7 @@ function App() {
         try { var m = storage.get(SK.menu); if (m) setMenu(JSON.parse(m)); } catch(e) {}
         try { var nm = storage.get(SK.nextMenu); setNextMenu(nm ? JSON.parse(nm) : null); } catch(e) {}
         try { var cd = storage.get(SK.confirmedDays); if (cd) setConfirmedDays(JSON.parse(cd)); } catch(e) {}
+        try { var al = storage.get(SK.activityLog); if (al) setActivityLog(JSON.parse(al)); } catch(e) {}
         try { var ld = storage.get(SK.lockedDays); if (ld) setLockedDays(JSON.parse(ld)); } catch(e) {}
         try { var di = storage.get(SK.dishes); if (di) setDishes(JSON.parse(di)); } catch(e) {}
         try { var st = storage.get(SK.stock); if (st) setStock(JSON.parse(st)); } catch(e) {}
@@ -7399,6 +7422,9 @@ function App() {
     if (loaded && authReady) storage.set(SK.confirmedDays, JSON.stringify(confirmedDays));
   }, [confirmedDays, loaded, authReady]);
   useEffect(() => {
+    if (loaded && authReady) storage.set(SK.activityLog, JSON.stringify(activityLog));
+  }, [activityLog, loaded, authReady]);
+  useEffect(() => {
     if (loaded && authReady) storage.set(SK.autoBackup, JSON.stringify(autoBackup));
   }, [autoBackup, loaded, authReady]);
   useEffect(() => {
@@ -7480,10 +7506,13 @@ function App() {
   // ── Stock helpers (binary only now, for summary stocked/needed) ──
   const toggleBinary = id => {
     haptic("light");
+    var wasStocked = !!stock[id];
     setStock(s => ({
       ...s,
       [id]: !s[id]
     }));
+    var item = items.find(function(i){ return i.id === id; });
+    if (item) logActivity(wasStocked ? "stock_unavailable" : "stock_available", item.name);
   };
   const inc = id => {
     haptic("light");
@@ -7501,6 +7530,7 @@ function App() {
   };
   const removeItem = id => {
     haptic("medium");
+    var item = items.find(function(i){ return i.id === id; });
     setItems(p => p.filter(i => i.id !== id));
     setStock(p => {
       const c = {
@@ -7509,6 +7539,7 @@ function App() {
       delete c[id];
       return c;
     });
+    if (item) logActivity("item_deleted", item.name);
   };
   function normIngName(s){ return String(s||"").toLowerCase().trim().replace(/s$/,""); }
   function confirmRemoveItem(item) {
@@ -7561,6 +7592,7 @@ function App() {
         allergens: newAllergens.length ? [...newAllergens] : (seedAls && seedAls.length ? seedAls : undefined)
       };
     })]);
+    logActivity("item_created", names);
     setNewName("");
     setNewType("binary");
     setNewCat("other");
@@ -7607,6 +7639,7 @@ function App() {
       id: Date.now(),
       ...d
     }]);
+    logActivity("dish_created", n);
     if (pendingNewPantryItems.length > 0) {
       setItems(function(p){ return p.concat(pendingNewPantryItems); });
       setPendingNewPantryItems([]);
@@ -7622,7 +7655,9 @@ function App() {
   }
   const removeDish = id => {
     haptic("medium");
+    var dish = dishes.find(function(d){ return d.id === id; });
     setDishes(p => p.filter(d => d.id !== id));
+    if (dish) logActivity("dish_deleted", dish.name);
   };
   const toggleIng = name => { haptic("light"); setDishData(d => ({
     ...d,
@@ -8140,6 +8175,7 @@ function App() {
       setNextMenu(null); // clear any leftover next-week plan
       setConfirmedDays({}); // flush confirmed state — new current week menu
     }
+    logActivity("menu_generated", newMenu.weekKey, overrides && overrides.triggeredBy);
     // After generate: update lockedForMenu — dishes in NEW menu=true, rest=false
     // (dishesForGen only exists in mixed mode; handle both modes)
     {
@@ -8370,6 +8406,7 @@ function App() {
       var picked_s=(poolA_s.length?poolA_s:poolB_s)[0];
       if(picked_s){
         setTargetMenu(function(prev){return Object.assign({},prev,{plan:Object.assign({},prev.plan,{[day]:Object.assign({},prev.plan[day],{[mealCat]:picked_s.name})})});});
+        logActivity("dish_swapped", day+" "+mealCat+": "+current+" → "+picked_s.name);
         setSwapModal(null);
         setSwapLoading(false);
         return;
@@ -8447,6 +8484,7 @@ Use ONLY stocked pantry ingredients. Dish name must be 30 characters or fewer (i
             }catch(e2){ /* silent fail */ }
           }
         }
+        logActivity("dish_swapped", day+" "+mealCat+": "+current+" → "+newDish);
         setSwapModal(null);
       } else {
         setSwapError("No suggestion returned. Try again.");
@@ -8853,7 +8891,7 @@ Only output the JSON. No markdown.`;
           // NOTE: stamp is set inside generateMenu on success (line ~7826) so Firestore
           // only receives the key after generation actually completes. The ref prevents
           // the 60s interval from double-firing while the async call is in-flight.
-          Promise.resolve(generateMenu({genMode: "mixed", ignoreStock: true}))
+          Promise.resolve(generateMenu({genMode: "mixed", ignoreStock: true, triggeredBy: "_miso"}))
             .finally(function(){ autoGenInFlightRef.current = false; });
         }
       }
@@ -9154,6 +9192,57 @@ Only output the JSON. No markdown.`;
     setToast({msg: msg, type: type || "info"});
     setTimeout(function() { setToast(null); }, 3000);
   }
+  // Household activity log — capped at 10 entries, consolidates rapid same-user/same-action
+  // bursts (e.g. marking bread + rice unavailable in one gesture) into a single entry.
+  var ACTIVITY_MERGE_WINDOW_MS = 10000;
+  function logActivity(action, itemNames, uidOverride) {
+    var names = (Array.isArray(itemNames) ? itemNames : [itemNames]).filter(Boolean);
+    if (!names.length) return;
+    var uid = uidOverride || (_fbAuth.currentUser ? _fbAuth.currentUser.uid : "local");
+    var now = Date.now();
+    setActivityLog(function(prev) {
+      var list = prev || [];
+      var last = list[list.length - 1];
+      if (last && last.uid === uid && last.action === action && (now - last.ts) < ACTIVITY_MERGE_WINDOW_MS) {
+        var mergedItems = Array.from(new Set(last.items.concat(names)));
+        return list.slice(0, -1).concat([Object.assign({}, last, { ts: now, items: mergedItems })]);
+      }
+      var next = list.concat([{ ts: now, uid: uid, action: action, items: names }]);
+      return next.length > 10 ? next.slice(next.length - 10) : next;
+    });
+  }
+  function timeAgo(ts) {
+    var diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (diffSec < 60) return "just now";
+    var diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return diffMin + "m ago";
+    var diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return diffHr + "h ago";
+    var diffDay = Math.floor(diffHr / 24);
+    return diffDay + "d ago";
+  }
+  function activityActorName(uid) {
+    if (uid === "_miso") return "Miso";
+    if (uid === "local") return "You";
+    if (user && uid === user.uid) return "You";
+    var m = householdMembers.find(function(hm){ return hm.uid === uid; });
+    return m ? m.name : "Someone";
+  }
+  function describeActivity(entry) {
+    var who = activityActorName(entry.uid);
+    var list = entry.items.join(", ");
+    switch (entry.action) {
+      case "stock_available":   return who + " marked " + list + " available";
+      case "stock_unavailable": return who + " marked " + list + " unavailable";
+      case "item_created":      return who + " added " + list + " to the pantry";
+      case "item_deleted":      return who + " removed " + list + " from the pantry";
+      case "dish_created":      return who + " added the dish " + list;
+      case "dish_deleted":      return who + " removed the dish " + list;
+      case "dish_swapped":      return who + " swapped " + list;
+      case "menu_generated":    return who + " generated the week's menu";
+      default:                  return who + " updated " + list;
+    }
+  }
   function confirmDay(dayName, silent) {
     var activeMenu = menu; // confirm only from current week plan
     if (!activeMenu || !activeMenu.plan || !activeMenu.plan[dayName]) return;
@@ -9190,6 +9279,10 @@ Only output the JSON. No markdown.`;
     t: "dishes",
     icon: "dishesTab",
     label: "Dishes"
+  }, {
+    t: "activity",
+    icon: "activityTab",
+    label: "Activity"
   }];
 
   // ── Theme ──
@@ -11160,7 +11253,41 @@ Only output the JSON. No markdown.`;
       fontSize: 14,
       padding: 20
     }
-  }, "No dishes yet. Tap + Dish.")), /*#__PURE__*/React.createElement(Modal, {
+  }, "No dishes yet. Tap + Dish.")), !showSettings && tab === "activity" && /*#__PURE__*/React.createElement("div", {
+    style: { height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "12px 10px 80px" }
+  },
+    /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", gap: 6, marginBottom: 16 }
+    }, ["logs", "metrics"].map(function(s) {
+      return /*#__PURE__*/React.createElement("button", {
+        key: s,
+        onClick: function(){ haptic("light"); setActivitySection(s); },
+        style: { ...pill(activitySection === s), flex: 1, padding: "8px 0", fontSize: 13, textTransform: "capitalize" }
+      }, s);
+    })),
+    activitySection === "logs" && (
+      activityLog.length === 0
+        ? /*#__PURE__*/React.createElement("div", {
+            style: { color: C.dim, fontSize: 14, padding: 20, textAlign: "center" }
+          }, "No activity yet.")
+        : /*#__PURE__*/React.createElement("div", null, activityLog.slice().reverse().map(function(entry, idx) {
+            return /*#__PURE__*/React.createElement("div", {
+              key: idx,
+              style: {
+                background: C.card, border: "1px solid " + C.border2, borderRadius: 12,
+                padding: "12px 14px", marginBottom: 8,
+                display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10
+              }
+            },
+              /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, color: C.white, lineHeight: 1.4 } }, describeActivity(entry)),
+              /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: C.dim2, whiteSpace: "nowrap", flexShrink: 0 } }, timeAgo(entry.ts))
+            );
+          }))
+    ),
+    activitySection === "metrics" && /*#__PURE__*/React.createElement("div", {
+      style: { color: C.dim, fontSize: 14, padding: 20, textAlign: "center" }
+    }, "Metrics coming soon.")
+  ), /*#__PURE__*/React.createElement(Modal, {
     open: addItemModal,
     onClose: () => setAddItemModal(false),
     title: "Add pantry item"
