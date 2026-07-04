@@ -10419,18 +10419,21 @@ Only output the JSON. No markdown.`;
             var rawI=dish?(dish.ingredients||[]):(aiDishIngredients[dishName]||[]);
             rawI.forEach(function(ing){
               var pi;
+              function staple2PassOverride(k, p){
+                return STAPLE2.has(k) && !(p && (p.id in stock || String(p.id) in stock));
+              }
               if(!isAIdish){
                 var k=ing.toLowerCase().trim();
-                if(STAPLE2.has(k)) return;
                 pi=plu2[k];
+                if(staple2PassOverride(k, pi)) return;
               } else {
                 var ingId2=Number(ing);
                 if(!isNaN(ingId2)&&ingId2>0){
                   pi=items.find(function(it){return it.id===ingId2||it.id===ing;});
                 } else {
                   var k2=String(ing).toLowerCase().trim();
-                  if(STAPLE2.has(k2)) return;
                   pi=findPI2(ing);
+                  if(staple2PassOverride(k2, pi)) return;
                 }
               }
               if(!pi) return;
@@ -10485,11 +10488,16 @@ Only output the JSON. No markdown.`;
       var rawIngs = dish ? (dish.ingredients||[]) : (aiDishIngredients[dishName]||[]);
       rawIngs.forEach(function(ing){
         var pantryItem;
+        // A staple ingredient (oil/salt/etc.) is skipped only if its pantry item has never been
+        // explicitly toggled — once a user marks one unavailable, it should count like any other.
+        function staplePassOverride(k, pi){
+          return STAPLE.has(k) && !(pi && (pi.id in stock || String(pi.id) in stock));
+        }
         if(!isAI){
           // Inventory dish: exact pantry name match (ingredients are pantry-anchored)
           var k = ing.toLowerCase().trim();
-          if(STAPLE.has(k)) return;
           pantryItem = pantryByName[k];
+          if(staplePassOverride(k, pantryItem)) return;
         } else {
           // AI dish: new format returns numeric IDs, old format returns name strings
           var ingId = Number(ing);
@@ -10499,8 +10507,8 @@ Only output the JSON. No markdown.`;
           } else {
             // Old format / fallback: name string with fuzzy
             var k2 = String(ing).toLowerCase().trim();
-            if(STAPLE.has(k2)) return;
             pantryItem = findPantryItemAI(ing);
+            if(staplePassOverride(k2, pantryItem)) return;
           }
         }
         if(!pantryItem) return;
@@ -12701,6 +12709,7 @@ Only output the JSON. No markdown.`;
             return Object.assign({},prev,{plan:Object.assign({},prev.plan,
               {[swapModal.day]:Object.assign({},prev.plan[swapModal.day],{[swapModal.mealCat]:d.name})})});
           });
+          logActivity("dish_swapped", swapModal.day+" "+swapModal.mealCat+": "+swapModal.current+" → "+d.name);
           setSwapModal(null); setSwapError("");
         };
         return /*#__PURE__*/React.createElement("div",{
@@ -12744,6 +12753,7 @@ Only output the JSON. No markdown.`;
             return Object.assign({},prev,{plan:Object.assign({},prev.plan,
               {[swapModal.day]:Object.assign({},prev.plan[swapModal.day],{[swapModal.mealCat]:"🍽 Dine Out"})})});
           });
+          logActivity("dish_swapped", swapModal.day+" "+swapModal.mealCat+": "+swapModal.current+" → Dine Out");
           setSwapModal(null); setSwapError("");
         },
         style:{...pill(false),width:"100%",padding:"10px 0",fontSize:13,textAlign:"left",paddingLeft:12}
