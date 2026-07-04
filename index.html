@@ -3376,7 +3376,7 @@ const storage = {
 // ─────────────────────────────────────────────────────────────────────────────
 //  VERSION & MIGRATION SYSTEM
 // ─────────────────────────────────────────────────────────────────────────────
-const CURRENT_VERSION = 12;
+const CURRENT_VERSION = 13;
 const VERSION_KEY = "pantryos-version";
 function runMigrations(storedVersion) {
   var data = {
@@ -3633,6 +3633,17 @@ const MIGRATIONS = {
       });
     }
     return data;
+  },
+  // v12 → v13: backfill isProcessed on existing items from ITEM_PROCESSED_SEED
+  12: function(data) {
+    if (data.items && Array.isArray(data.items)) {
+      data.items = data.items.map(function(item) {
+        if (item.isProcessed !== undefined) return item; // user already set (or cleared) — don't touch
+        var proc = ITEM_PROCESSED_SEED[(item.name||"").toLowerCase().trim()];
+        return proc ? Object.assign({}, item, { isProcessed: true }) : item;
+      });
+    }
+    return data;
   }
 };
 
@@ -3730,6 +3741,29 @@ const ITEM_ALLERGEN_SEED = {
 DEFAULT_ITEMS.forEach(function(item) {
   var als = ITEM_ALLERGEN_SEED[item.name.toLowerCase().trim()];
   if (als && als.length) item.allergens = als;
+});
+
+// Maps pantry item names (lowercase) → true for packaged/ready-to-eat/ultra-processed foods —
+// pre-tags DEFAULT_ITEMS and used in migration v12→v13. Whole foods, fresh produce, raw meat/fish,
+// plain dairy, dried grains/legumes/spices/herbs and cooking staples (oils, flour, condiment pastes)
+// are intentionally left untagged — the goal is flagging packaged convenience/snack items, not
+// every industrially-produced ingredient.
+const ITEM_PROCESSED_SEED = {
+  "condensed milk":true, "white bread":true, "burger buns":true, "pizza bread":true,
+  "tortilla wraps":true, "croissant":true, "pancake mix":true, "meal maker":true,
+  "maggi":true, "instant noodles":true, "tomato ketchup":true, "mayonnaise":true,
+  "hot sauce":true, "chilli sauce":true, "barbecue sauce":true, "ranch dressing":true,
+  "sriracha":true, "hoisin sauce":true, "gochujang":true, "worcestershire":true,
+  "soda":true, "juice":true, "hot chocolate":true, "protein shake":true, "ice cream":true,
+  "frozen pizza":true, "frozen paratha":true, "chips":true, "biscuits":true, "popcorn":true,
+  "protein bar":true, "crackers":true, "rice cakes":true, "granola bar":true,
+  "dark chocolate":true, "murukku":true, "namkeen":true, "cookies":true, "pretzels":true,
+  "poha chivda":true,
+};
+
+// Stamp processed flags onto DEFAULT_ITEMS so cuisine presets and fresh seeds carry them pre-tagged
+DEFAULT_ITEMS.forEach(function(item) {
+  if (ITEM_PROCESSED_SEED[item.name.toLowerCase().trim()]) item.isProcessed = true;
 });
 
 // prepCondition: null | "soaking" | "marinating" | "thawing"
@@ -5832,6 +5866,8 @@ function PantryTile({
 }) {
   const tileCol = catCol(CAT_COLOR[item.cat] || "#888");
   const active = item.type === "quantity" ? (val || 0) > 0 : val === true;
+  const isLightTheme = C.bg === "#f5f0ea" || C.bg === "#ebebeb" || C.bg === "#f0f0f0";
+  const processedBg = isLightTheme ? "#f5e6d3" : "#2e2115";
   const pressTimer = React.useRef(null);
   const longPressed = React.useRef(false);
   const startPress = () => {
@@ -5869,7 +5905,7 @@ function PantryTile({
     style: {
       width: "100%",
       height: "100%",
-      background: C.card,
+      background: item.isProcessed ? processedBg : C.card,
       border: active ? "1px solid " + C.border : "1px solid transparent",
       borderRadius: 18,
       boxShadow: active ? "inset 0 0 0 1px rgba(184,147,90,0.18)" : "none",
@@ -6855,6 +6891,7 @@ function App() {
   const [dishSearch, setDishSearch] = useState(""); // dish obj being edited
   const [pantrySearch, setPantrySearch] = useState("");
   const [newIsStaple, setNewIsStaple] = useState(false);
+  const [newIsProcessed, setNewIsProcessed] = useState(false);
   const [newAllergens, setNewAllergens] = useState([]);
   const [removeItemConfirm, setRemoveItemConfirm] = useState(null); // {item, linked}
   const [dishAdvanced, setDishAdvanced] = useState(false); // show advanced rules in add dish
@@ -7520,6 +7557,7 @@ function App() {
         type: newType,
         cat: newCat,
         isStaple: newCat === "staples" ? true : newIsStaple,
+        isProcessed: newIsProcessed,
         allergens: newAllergens.length ? [...newAllergens] : (seedAls && seedAls.length ? seedAls : undefined)
       };
     })]);
@@ -7527,6 +7565,7 @@ function App() {
     setNewType("binary");
     setNewCat("other");
     setNewIsStaple(false);
+    setNewIsProcessed(false);
     setNewAllergens([]);
     setAddItemModal(false);
   }
@@ -11179,6 +11218,17 @@ Only output the JSON. No markdown.`;
       style: { ...pill(newIsStaple), padding: "5px 14px", fontSize: 13, flexShrink: 0 }
     }, newIsStaple ? "Yes" : "No")
   ), /*#__PURE__*/React.createElement("div", {
+    style: { marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }
+  },
+    /*#__PURE__*/React.createElement("div", null,
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, color: C.white, fontWeight: 600, marginBottom: 3 } }, "Processed food"),
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, lineHeight: 1.4, maxWidth: 220 } }, "Packaged or ready-to-eat — highlighted in the pantry.")
+    ),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => setNewIsProcessed(v => !v),
+      style: { ...pill(newIsProcessed), padding: "5px 14px", fontSize: 13, flexShrink: 0 }
+    }, newIsProcessed ? "Yes" : "No")
+  ), /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 16
     }
@@ -12607,6 +12657,17 @@ Only output the JSON. No markdown.`;
       onClick: () => { haptic("light"); setEditItemModal(p => ({ ...p, isStaple: !p.isStaple })); },
       style: { ...pill(!!editItemModal.isStaple), padding: "5px 14px", fontSize: 13, flexShrink: 0 }
     }, editItemModal.isStaple ? "Yes" : "No")
+  ), /*#__PURE__*/React.createElement("div", {
+    style: { marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }
+  },
+    /*#__PURE__*/React.createElement("div", null,
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, color: C.white, fontWeight: 600, marginBottom: 3 } }, "Processed food"),
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, lineHeight: 1.4, maxWidth: 220 } }, "Packaged or ready-to-eat — highlighted in the pantry.")
+    ),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => { haptic("light"); setEditItemModal(p => ({ ...p, isProcessed: !p.isProcessed })); },
+      style: { ...pill(!!editItemModal.isProcessed), padding: "5px 14px", fontSize: 13, flexShrink: 0 }
+    }, editItemModal.isProcessed ? "Yes" : "No")
   ), /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 16
