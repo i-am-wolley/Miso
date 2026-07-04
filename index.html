@@ -10456,12 +10456,15 @@ Only output the JSON. No markdown.`;
   ),
   (() => {
     var activeMenuForShopping = nextMenu || menu;
-    var menuDishNames = new Set();
+    // Occurrences, not a deduped set — the same dish scheduled on two different days needs its
+    // ingredients twice (e.g. Arabic Bread for both Friday and Saturday breakfast), so each
+    // day+meal slot is tracked separately rather than collapsing repeats into one dish name.
+    var menuOccurrences = [];
     Object.entries(activeMenuForShopping.plan).forEach(function(entry){
       var dayName=entry[0], dayPlan=entry[1];
       if(!dayPlan||typeof dayPlan!=="object") return;
       if(activeMenuForShopping===menu && confirmedDays && confirmedDays[dayName]) return;
-      Object.values(dayPlan).forEach(function(n){if(n&&n!=="🍽 Dine Out")menuDishNames.add(n);});
+      Object.values(dayPlan).forEach(function(n){if(n&&n!=="🍽 Dine Out")menuOccurrences.push({day:dayName, dishName:n});});
     });
     var STAPLE = new Set(["oil","cooking oil","salt","water","sugar","black pepper","ghee","butter"]);
     // For AI dishes: fuzzy fallback in case Claude drifts from exact pantry names
@@ -10482,7 +10485,8 @@ Only output the JSON. No markdown.`;
       })||null;
     }
     var missingMap = {};
-    menuDishNames.forEach(function(dishName){
+    menuOccurrences.forEach(function(occ){
+      var dishName = occ.dishName;
       var dish = dishes.find(function(d){return d.name===dishName;});
       var isAI = !dish;
       var rawIngs = dish ? (dish.ingredients||[]) : (aiDishIngredients[dishName]||[]);
@@ -10517,7 +10521,7 @@ Only output the JSON. No markdown.`;
         if(!inStock){
           var label = pantryItem.name;
           if(!missingMap[label]) missingMap[label]={dishes:[],isAI:isAI,itemId:pantryItem.id};
-          missingMap[label].dishes.push(dishName);
+          missingMap[label].dishes.push(occ.day+": "+dishName);
         }
       });
     });
@@ -10542,7 +10546,7 @@ Only output the JSON. No markdown.`;
       return a.localeCompare(b);
     });
     // AI dishes with no ingredient data yet
-    var unknownAI = [...menuDishNames].filter(function(n){
+    var unknownAI = [...new Set(menuOccurrences.map(function(o){return o.dishName;}))].filter(function(n){
       return !dishes.find(function(d){return d.name===n;}) && !(n in aiDishIngredients);
     });
     if(missingList.length===0 && unknownAI.length===0){
