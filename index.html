@@ -9290,11 +9290,11 @@ Only output the JSON. No markdown.`;
       });
     });
     var color;
-    if (dineOutCount > 1 || processedIds.size > 6) color = "red";
-    else if (dineOutCount === 1) color = "yellow";
-    else if (processedIds.size === 0) color = "blue";
-    else if (processedIds.size <= 3) color = "green";
-    else color = "lightgreen";
+    if (dineOutCount > 1 || processedIds.size > 6) color = "heavy";
+    else if (dineOutCount === 1) color = "mixed";
+    else if (processedIds.size === 0) color = "whole";
+    else if (processedIds.size <= 3) color = "mostly";
+    else color = "leaning";
     return { dineOutCount: dineOutCount, processedCount: processedIds.size, color: color };
   }
   function confirmDay(dayName, silent) {
@@ -11350,13 +11350,13 @@ Only output the JSON. No markdown.`;
           }))
     ),
     activitySection === "metrics" && (function() {
-      var DAY_COLOR_HEX = { blue: "#4A90D9", green: "#4C8C3C", lightgreen: "#A8D08D", yellow: "#E3B23C", red: "#c0392b" };
+      var DAY_COLOR_HEX = { whole: "#6F9E80", mostly: "#A8C7B3", leaning: "#C9A36A", mixed: "#E3A14E", heavy: "#E8876B" };
       var DAY_COLOR_LABEL = {
-        blue: "Home-cooked, no processed food",
-        green: "Home-cooked, 1–3 processed items",
-        lightgreen: "Home-cooked, 4–6 processed items",
-        yellow: "1 slot dine-out",
-        red: "2+ dine-out, or 7+ processed items"
+        whole: "Whole-food day",
+        mostly: "Mostly whole",
+        leaning: "Leaning processed",
+        mixed: "One meal out",
+        heavy: "Convenience day"
       };
       // ── 5-week tracker ──
       var today = new Date();
@@ -11411,10 +11411,33 @@ Only output the JSON. No markdown.`;
           if (pantryItem && (pantryItem.cat === "fruit" || pantryItem.cat === "veg")) fruitVegIds.add(pantryItem.id);
         });
       });
-      var tileStyle = { background: C.card, border: "1px solid " + C.border2, borderRadius: 12, padding: "14px 16px", marginBottom: 8 };
-      var tileLabelStyle = { fontSize: 11, color: C.dim, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6 };
-      var tileValueStyle = { fontSize: 20, fontWeight: 800, color: C.white };
+      var squareStyle = {
+        flex: 1, aspectRatio: "1", background: C.card, border: "1px solid " + C.border2, borderRadius: 12,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        textAlign: "center", padding: 8
+      };
+      var squareLabelStyle = { fontSize: 10, color: C.dim, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 4 };
+      var squareValueStyle = { fontSize: 20, fontWeight: 800, color: C.white, lineHeight: 1.1 };
+      var squareCaptionStyle = { fontSize: 10, color: C.dim2, marginTop: 2 };
       return /*#__PURE__*/React.createElement("div", null,
+        /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "This week"),
+        /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 20 } },
+          /*#__PURE__*/React.createElement("div", { style: squareStyle },
+            /*#__PURE__*/React.createElement("div", { style: squareLabelStyle }, "This week's meals"),
+            /*#__PURE__*/React.createElement("div", { style: squareValueStyle }, homeCookedSlots + "/" + totalSlots),
+            /*#__PURE__*/React.createElement("div", { style: squareCaptionStyle }, "home-cooked")
+          ),
+          /*#__PURE__*/React.createElement("div", { style: squareStyle },
+            /*#__PURE__*/React.createElement("div", { style: squareLabelStyle }, "Pantry"),
+            /*#__PURE__*/React.createElement("div", { style: squareValueStyle }, processedPct + "%"),
+            /*#__PURE__*/React.createElement("div", { style: squareCaptionStyle }, "processed items")
+          ),
+          /*#__PURE__*/React.createElement("div", { style: squareStyle },
+            /*#__PURE__*/React.createElement("div", { style: squareLabelStyle }, "This week"),
+            /*#__PURE__*/React.createElement("div", { style: squareValueStyle }, fruitVegIds.size),
+            /*#__PURE__*/React.createElement("div", { style: squareCaptionStyle }, "fruits & veg")
+          )
+        ),
         /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "Last 5 weeks"),
         /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 } },
           weeks.map(function(week, wi) {
@@ -11441,20 +11464,6 @@ Only output the JSON. No markdown.`;
               /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: C.dim2 } }, DAY_COLOR_LABEL[c])
             );
           })
-        ),
-        /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "This week"),
-        /*#__PURE__*/React.createElement("div", { style: tileStyle },
-          /*#__PURE__*/React.createElement("div", { style: tileLabelStyle }, "Home-cooked vs. dine-out"),
-          /*#__PURE__*/React.createElement("div", { style: tileValueStyle }, homeCookedSlots + " home-cooked · " + dineOutSlots + " dine-out")
-        ),
-        /*#__PURE__*/React.createElement("div", { style: tileStyle },
-          /*#__PURE__*/React.createElement("div", { style: tileLabelStyle }, "Processed food share of pantry"),
-          /*#__PURE__*/React.createElement("div", { style: tileValueStyle }, processedPct + "%"),
-          /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim2, marginTop: 2 } }, processedStocked + " of " + stockedForMetrics.length + " stocked items")
-        ),
-        /*#__PURE__*/React.createElement("div", { style: tileStyle },
-          /*#__PURE__*/React.createElement("div", { style: tileLabelStyle }, "Fruits & veg picked this week"),
-          /*#__PURE__*/React.createElement("div", { style: tileValueStyle }, fruitVegIds.size + " different")
         )
       );
     })()
@@ -12709,10 +12718,10 @@ Only output the JSON. No markdown.`;
                   },d.name);
                 })
               ),
-          unstocked.length>0 && !swapShowUnstocked && /*#__PURE__*/React.createElement("button",{
-            onClick:function(){ haptic("light"); setSwapShowUnstocked(true); },
+          unstocked.length>0 && /*#__PURE__*/React.createElement("button",{
+            onClick:function(){ haptic("light"); setSwapShowUnstocked(function(v){ return !v; }); },
             style:{background:"none",border:"none",color:C.dim2,fontSize:11,cursor:"pointer",fontFamily:C.font,padding:0,marginTop:8,textDecoration:"underline"}
-          },"+"+unstocked.length+" more (missing ingredients)"),
+          }, swapShowUnstocked ? "Show less" : "+"+unstocked.length+" more (missing ingredients)"),
           unstocked.length>0 && swapShowUnstocked && /*#__PURE__*/React.createElement("div",{style:{marginTop:8}},
             /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:C.dim2,marginBottom:5}},"Missing some ingredients — they'll be added to your shopping list"),
             /*#__PURE__*/React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:5}},
