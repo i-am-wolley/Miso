@@ -9201,7 +9201,7 @@ Only output the JSON. No markdown.`;
   }
   // Household activity log — capped at 10 entries, consolidates rapid same-user/same-action
   // bursts (e.g. marking bread + rice unavailable in one gesture) into a single entry.
-  var ACTIVITY_MERGE_WINDOW_MS = 10000;
+  var ACTIVITY_MERGE_WINDOW_MS = 60000;
   function logActivity(action, itemNames, uidOverride) {
     var names = (Array.isArray(itemNames) ? itemNames : [itemNames]).filter(Boolean);
     if (!names.length) return;
