@@ -10424,7 +10424,7 @@ Only output the JSON. No markdown.`;
               }
               if(!isAIdish){
                 var k=ing.toLowerCase().trim();
-                pi=plu2[k];
+                pi=plu2[k] || findPI2(ing);
                 if(staple2PassOverride(k, pi)) return;
               } else {
                 var ingId2=Number(ing);
@@ -10494,9 +10494,10 @@ Only output the JSON. No markdown.`;
           return STAPLE.has(k) && !(pi && (pi.id in stock || String(pi.id) in stock));
         }
         if(!isAI){
-          // Inventory dish: exact pantry name match (ingredients are pantry-anchored)
+          // Inventory dish: pantry name match, with fuzzy fallback in case the pantry item was
+          // renamed or the dish's stored ingredient string doesn't match exactly (plural, typo).
           var k = ing.toLowerCase().trim();
-          pantryItem = pantryByName[k];
+          pantryItem = pantryByName[k] || findPantryItemAI(ing);
           if(staplePassOverride(k, pantryItem)) return;
         } else {
           // AI dish: new format returns numeric IDs, old format returns name strings
