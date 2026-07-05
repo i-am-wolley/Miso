@@ -11579,7 +11579,7 @@ Only output the JSON. No markdown.`;
       var dailyWhole = countWhole(null);
       var cards = [
         renderTrackerCard({
-          title: "Daily Rhythm", slotKey: null,
+          title: "Whole-food days", slotKey: null,
           kpis: [
             wholeFoodKpi(dailyWhole, "whole-food days"),
             { kind: "fraction", numerator: homeCookedSlots, denominator: totalSlots, label: "meals home-cooked this week" }
@@ -11596,13 +11596,16 @@ Only output the JSON. No markdown.`;
       });
       return /*#__PURE__*/React.createElement("div", null,
         cards,
-        /*#__PURE__*/React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", rowGap: 8, columnGap: 10, marginBottom: 20 } },
-          Object.keys(DAY_COLOR_HEX).map(function(c){
-            return /*#__PURE__*/React.createElement("div", { key: c, style: { display: "flex", alignItems: "center", gap: 5 } },
-              /*#__PURE__*/React.createElement("div", { style: { width: 10, height: 10, borderRadius: 3, background: DAY_COLOR_HEX[c], flexShrink: 0 } }),
-              /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: C.dim2 } }, DAY_COLOR_LABEL[c])
-            );
-          })
+        /*#__PURE__*/React.createElement("div", { style: Object.assign({}, cardStyle, { marginBottom: 20 }) },
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 0.3, marginBottom: 10 } }, "Color key"),
+          /*#__PURE__*/React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", rowGap: 8, columnGap: 10 } },
+            Object.keys(DAY_COLOR_HEX).map(function(c){
+              return /*#__PURE__*/React.createElement("div", { key: c, style: { display: "flex", alignItems: "center", gap: 5 } },
+                /*#__PURE__*/React.createElement("div", { style: { width: 10, height: 10, borderRadius: 3, background: DAY_COLOR_HEX[c], flexShrink: 0 } }),
+                /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: C.dim2 } }, DAY_COLOR_LABEL[c])
+              );
+            })
+          )
         )
       );
     })()
