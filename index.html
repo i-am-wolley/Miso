@@ -5912,8 +5912,10 @@ function PantryTile({
   const processedBg = isLightTheme ? "#f6dcdc" : "#2e1a1a";
   const pressTimer = React.useRef(null);
   const longPressed = React.useRef(false);
+  const [pressed, setPressed] = React.useState(false);
   const startPress = () => {
     longPressed.current = false;
+    setPressed(true);
     pressTimer.current = setTimeout(() => {
       longPressed.current = true;
       if (haptic) haptic("medium");
@@ -5921,6 +5923,7 @@ function PantryTile({
     }, 550);
   };
   const endPress = () => {
+    setPressed(false);
     if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
   };
   return /*#__PURE__*/React.createElement("div", {
@@ -5958,7 +5961,8 @@ function PantryTile({
       cursor: "pointer",
       padding: 4,
       boxSizing: "border-box",
-      transition: "background 0.12s",
+      transform: pressed ? "scale(0.94)" : "scale(1)",
+      transition: "background 0.12s, transform 0.12s ease",
       overflow: "hidden",
       position: "relative",
       opacity: active ? 1 : 0.42
