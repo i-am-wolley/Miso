@@ -5869,6 +5869,30 @@ const PREP_INSTRUCTION = {
   marinating: "Marinate before cooking"
 };
 
+// Counts up from its previous value to `value` on every change, instead of jumping straight
+// to the new number — used for KPI-style stats where an instant jump reads as less "alive."
+function AnimatedNumber({ value, duration, format }) {
+  const [display, setDisplay] = React.useState(value);
+  const fromRef = React.useRef(value);
+  React.useEffect(() => {
+    const from = fromRef.current;
+    const to = value;
+    if (from === to) return;
+    let startTs = null;
+    const dur = duration || 700;
+    let raf;
+    function tick(ts) {
+      if (startTs === null) startTs = ts;
+      const progress = Math.min((ts - startTs) / dur, 1);
+      setDisplay(from + (to - from) * progress);
+      if (progress < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = to;
+    }
+    raf = requestAnimationFrame(tick);
+    return () => { if (raf) cancelAnimationFrame(raf); };
+  }, [value, duration]);
+  return format ? format(display) : Math.round(display);
+}
 // Pantry item: simple chip/label style – just name + delete
 // Interactive summary tile – toggle binary or increment/decrement quantity
 function PantryTile({
@@ -11431,8 +11455,10 @@ Only output the JSON. No markdown.`;
         });
         return { wholeCount: wholeCount, loggedCount: loggedCount };
       }
-      function wholeFoodPct(w) {
-        return w.loggedCount === 0 ? "—" : Math.round(w.wholeCount / w.loggedCount * 100) + "%";
+      function wholeFoodKpi(w, label) {
+        return w.loggedCount === 0
+          ? { kind: "text", value: "—", label: label }
+          : { kind: "pct", value: Math.round(w.wholeCount / w.loggedCount * 100), label: label };
       }
       // Still needed by the Daily Rhythm card's "meals home-cooked this week" KPI
       var weekPlan = (menu && menu.plan) || {};
@@ -11453,12 +11479,20 @@ Only output the JSON. No markdown.`;
             /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: C.white } }, opts.title),
             streak > 0 && /*#__PURE__*/React.createElement("div", {
               style: { fontSize: 11, fontWeight: 700, color: "#E3A14E", background: "rgba(227,161,78,0.14)", borderRadius: 20, padding: "3px 10px" }
-            }, "🔥 " + streak + "d")
+            }, "🔥 ", /*#__PURE__*/React.createElement(AnimatedNumber, { value: streak, format: function(v){ return Math.round(v) + "d"; } }))
           ),
           /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 16, marginBottom: 12 } },
             opts.kpis.map(function(kpi, i){
+              var valueNode;
+              if (kpi.kind === "pct") {
+                valueNode = /*#__PURE__*/React.createElement(AnimatedNumber, { value: kpi.value, format: function(v){ return Math.round(v) + "%"; } });
+              } else if (kpi.kind === "fraction") {
+                valueNode = /*#__PURE__*/React.createElement(AnimatedNumber, { value: kpi.numerator, format: function(v){ return Math.round(v) + "/" + kpi.denominator; } });
+              } else {
+                valueNode = kpi.value;
+              }
               return /*#__PURE__*/React.createElement("div", { key: i },
-                /*#__PURE__*/React.createElement("div", { style: { fontSize: 16, fontWeight: 800, color: C.white } }, kpi.value),
+                /*#__PURE__*/React.createElement("div", { style: { fontSize: 16, fontWeight: 800, color: C.white } }, valueNode),
                 /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: C.dim2, marginTop: 2 } }, kpi.label)
               );
             })
@@ -11490,8 +11524,8 @@ Only output the JSON. No markdown.`;
         renderTrackerCard({
           title: "Daily Rhythm", slotKey: null,
           kpis: [
-            { value: wholeFoodPct(dailyWhole), label: "whole-food days" },
-            { value: homeCookedSlots + "/" + totalSlots, label: "meals home-cooked this week" }
+            wholeFoodKpi(dailyWhole, "whole-food days"),
+            { kind: "fraction", numerator: homeCookedSlots, denominator: totalSlots, label: "meals home-cooked this week" }
           ]
         })
       ];
@@ -11500,7 +11534,7 @@ Only output the JSON. No markdown.`;
         var w = countWhole(mealCat);
         cards.push(renderTrackerCard({
           title: mealCat, slotKey: mealCat,
-          kpis: [ { value: wholeFoodPct(w), label: "whole-food " + plural } ]
+          kpis: [ wholeFoodKpi(w, "whole-food " + plural) ]
         }));
       });
       return /*#__PURE__*/React.createElement("div", null,
