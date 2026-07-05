@@ -3373,6 +3373,7 @@ const SK_LOCAL = {
   pantryCheckWeek:  "pantryos-pantrycheck",
   notifications:    "pantryos-notifications",
   greetingName:     "pantryos-greetingname",
+  celebratedStreak: "pantryos-celebratedstreak",
 };
 const SK = { ...SK_SYNC, ...SK_LOCAL };
 const _syncKeySet = new Set(Object.values(SK_SYNC));
@@ -7011,6 +7012,7 @@ function App() {
   const [colorMode, setColorMode] = useState("color"); // "color" | "mono"
   const [dishNameFont, setDishNameFont] = useState("italic"); // "italic" | "bold"
   const [greetingName, setGreetingName] = useState("");
+  const [celebratedStreak, setCelebratedStreak] = useState(0);
   const [screensaverOn, setScreensaverOn] = useState(false);
   const [screensaverMins, setScreensaverMins] = useState(15);
   const [focusTick, setFocusTick] = useState(0);
@@ -7212,6 +7214,8 @@ function App() {
       if (sdl) setDayLog(JSON.parse(sdl));
       const sgn = storage.get(SK.greetingName);
       if (sgn !== null) setGreetingName(JSON.parse(sgn));
+      const scs = storage.get(SK.celebratedStreak);
+      if (scs !== null) setCelebratedStreak(JSON.parse(scs));
     } catch (e) {
       console.warn("Storage load error", e);
     }
@@ -7496,6 +7500,9 @@ function App() {
   useEffect(() => {
     if (loaded) storage.set(SK.greetingName, JSON.stringify(greetingName));
   }, [greetingName, loaded]);
+  useEffect(() => {
+    if (loaded) storage.set(SK.celebratedStreak, JSON.stringify(celebratedStreak));
+  }, [celebratedStreak, loaded]);
   useEffect(() => {
     if (loaded) storage.set(SK.screensaverOn, JSON.stringify(screensaverOn));
     window.__ssEnabled = screensaverOn;
@@ -9351,6 +9358,20 @@ Only output the JSON. No markdown.`;
     else color = "leaning";
     return { dineOutCount: dineOutCount, processedCount: processedIds.size, color: color, slots: slots };
   }
+  var STREAK_MILESTONES = [7, 14, 30, 60, 100];
+  function computeDailyStreakFromLog(log, fromDateKey) {
+    var streak = 0;
+    var parts = fromDateKey.split("-").map(Number);
+    var d = new Date(parts[0], parts[1] - 1, parts[2]);
+    while (true) {
+      var key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+      var entry = log[key];
+      if (!entry || entry.color !== "whole") break;
+      streak++;
+      d.setDate(d.getDate() - 1);
+    }
+    return streak;
+  }
   function confirmDay(dayName, silent) {
     var activeMenu = menu; // confirm only from current week plan
     if (!activeMenu || !activeMenu.plan || !activeMenu.plan[dayName]) return;
@@ -9380,7 +9401,17 @@ Only output the JSON. No markdown.`;
       }
       return next;
     });
-    if (!silent) showToast("Day confirmed!", "success");
+    // Milestone celebration — checked against the merged log (current state + the entry just
+    // computed above) since the setDayLog call above hasn't committed yet at this point.
+    var mergedLogForStreak = Object.assign({}, dayLog, { [dateKey]: snap });
+    var newStreak = computeDailyStreakFromLog(mergedLogForStreak, dateKey);
+    var hitMilestone = STREAK_MILESTONES.find(function(m){ return m === newStreak; });
+    if (hitMilestone && hitMilestone > celebratedStreak) {
+      setCelebratedStreak(hitMilestone);
+      showToast("🔥 " + hitMilestone + "-day whole-food streak!", "success");
+    } else if (!silent) {
+      showToast("Day confirmed!", "success");
+    }
   }
   const TABS = [{
     t: "summary",
