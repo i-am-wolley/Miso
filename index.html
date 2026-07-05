@@ -22,6 +22,8 @@
     .modal-card-tall{max-height:96vh; border-radius:16px;}
     @supports (height:100dvh){.modal-card-tall{max-height:96dvh;}}
   }
+  @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(16px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+  @keyframes toastOut { from { opacity:1; transform:translateX(-50%) translateY(0); } to { opacity:0; transform:translateX(-50%) translateY(16px); } }
 </style>
 </head>
 <body>
@@ -6933,6 +6935,7 @@ function App() {
   const [aiSlotSel, setAiSlotSel] = useState({});
   const [aiSlotPopup, setAiSlotPopup] = useState(false);
   const [toast, setToast] = useState(null);
+  const [toastLeaving, setToastLeaving] = useState(false);
   const [addMealCatModal, setAddMealCatModal] = useState(false);
   const [newMealCat, setNewMealCat] = useState("");
   const [editItemModal, setEditItemModal] = useState(null); // item obj being edited
@@ -9225,8 +9228,15 @@ Only output the JSON. No markdown.`;
     }
   }
   function showToast(msg, type) {
-    setToast({msg: msg, type: type || "info"});
-    setTimeout(function() { setToast(null); }, 3000);
+    var id = Date.now();
+    setToast({msg: msg, type: type || "info", id: id});
+    setToastLeaving(false);
+    setTimeout(function() {
+      setToastLeaving(true);
+      setTimeout(function() {
+        setToast(function(cur) { return (cur && cur.id === id) ? null : cur; });
+      }, 220);
+    }, 2780);
   }
   // Household activity log — capped at 10 entries, consolidates rapid same-user/same-action
   // bursts (e.g. marking bread + rice unavailable in one gesture) into a single entry.
@@ -14081,13 +14091,15 @@ Only output the JSON. No markdown.`;
   })(),
   // Toast
   toast && /*#__PURE__*/React.createElement("div", {
+    key: toast.id,
     style: {
       position:"fixed",bottom:"calc(env(safe-area-inset-bottom)+80px)",
-      left:"50%",transform:"translateX(-50%)",
+      left:"50%",
       background:toast.type==="success"?"#166534":toast.type==="error"?"#7f1d1d":"#1e293b",
       color:"#fff",borderRadius:8,padding:"10px 18px",fontSize:14,fontWeight:600,
       zIndex:999,pointerEvents:"none",whiteSpace:"nowrap",
-      boxShadow:"0 4px 20px rgba(0,0,0,0.4)"
+      boxShadow:"0 4px 20px rgba(0,0,0,0.4)",
+      animation: (toastLeaving ? "toastOut 0.22s ease-in forwards" : "toastIn 0.22s ease-out forwards")
     }
   }, toast.msg),
   // AI Slot Popup
