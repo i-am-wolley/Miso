@@ -5915,9 +5915,11 @@ function PantryTile({
   const processedBg = isLightTheme ? "#f6dcdc" : "#2e1a1a";
   const pressTimer = React.useRef(null);
   const longPressed = React.useRef(false);
+  const startPos = React.useRef({ x: 0, y: 0 });
   const [pressed, setPressed] = React.useState(false);
-  const startPress = () => {
+  const startPress = (e) => {
     longPressed.current = false;
+    startPos.current = { x: e.clientX, y: e.clientY };
     setPressed(true);
     pressTimer.current = setTimeout(() => {
       longPressed.current = true;
@@ -5928,6 +5930,11 @@ function PantryTile({
   const endPress = () => {
     setPressed(false);
     if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
+  };
+  const handlePointerMove = (e) => {
+    if (!pressTimer.current) return; // no hold pending, nothing to cancel
+    var dx = e.clientX - startPos.current.x, dy = e.clientY - startPos.current.y;
+    if (Math.hypot(dx, dy) > 10) endPress(); // moved too far — treat as a scroll, not a hold
   };
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5946,6 +5953,7 @@ function PantryTile({
       if (item.type === "binary") onToggle();else onInc();
     },
     onPointerDown: startPress,
+    onPointerMove: handlePointerMove,
     onPointerUp: endPress,
     onPointerLeave: endPress,
     onPointerCancel: endPress,
@@ -6064,20 +6072,28 @@ function DishTile({
   const accent = mealCatMeta(cats[0], colorMode, C).color;
   const pressTimer = React.useRef(null);
   const longPressed = React.useRef(false);
-  const startPress = function() {
+  const startPos = React.useRef({ x: 0, y: 0 });
+  const startPress = function(e) {
     longPressed.current = false;
+    startPos.current = { x: e.clientX, y: e.clientY };
     pressTimer.current = setTimeout(function() {
       longPressed.current = true;
       if (haptic) haptic("light");
       onEdit && onEdit();
     }, 550);
   };
-  const endPress = function() { clearTimeout(pressTimer.current); };
+  const endPress = function() { clearTimeout(pressTimer.current); pressTimer.current = null; };
+  const handlePointerMove = function(e) {
+    if (!pressTimer.current) return; // no hold pending, nothing to cancel
+    var dx = e.clientX - startPos.current.x, dy = e.clientY - startPos.current.y;
+    if (Math.hypot(dx, dy) > 10) endPress(); // moved too far — treat as a scroll, not a hold
+  };
   return /*#__PURE__*/React.createElement("div", {
     style: {position:"relative",width:size,height:size,flexShrink:0}
   },
   /*#__PURE__*/React.createElement("button", {
     onPointerDown: startPress,
+    onPointerMove: handlePointerMove,
     onPointerUp: endPress,
     onPointerLeave: endPress,
     onPointerCancel: endPress,
