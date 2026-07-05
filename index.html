@@ -11431,7 +11431,10 @@ Only output the JSON. No markdown.`;
         });
         return { wholeCount: wholeCount, loggedCount: loggedCount };
       }
-      // ── This week's stat tiles ──
+      function wholeFoodPct(w) {
+        return w.loggedCount === 0 ? "—" : Math.round(w.wholeCount / w.loggedCount * 100) + "%";
+      }
+      // Still needed by the Daily Rhythm card's "meals home-cooked this week" KPI
       var weekPlan = (menu && menu.plan) || {};
       var totalSlots = 0, dineOutSlots = 0;
       Object.values(weekPlan).forEach(function(dp){
@@ -11439,42 +11442,6 @@ Only output the JSON. No markdown.`;
         Object.values(dp).forEach(function(v){ if (!v) return; totalSlots++; if (v.indexOf("Dine Out") >= 0) dineOutSlots++; });
       });
       var homeCookedSlots = totalSlots - dineOutSlots;
-      var stockedForMetrics = items.filter(function(it){ return !!stock[it.id] || !!stock[String(it.id)]; });
-      var processedStocked = stockedForMetrics.filter(function(it){ return it.isProcessed; }).length;
-      var processedPct = stockedForMetrics.length ? Math.round(processedStocked / stockedForMetrics.length * 100) : 0;
-      var activeMenuForMetrics = nextMenu || menu;
-      var weekDishNamesM = new Set();
-      if (activeMenuForMetrics && activeMenuForMetrics.plan) {
-        Object.values(activeMenuForMetrics.plan).forEach(function(dp){
-          if (!dp) return;
-          Object.values(dp).forEach(function(v){ if (v && v.indexOf("Dine Out") < 0) weekDishNamesM.add(v); });
-        });
-      }
-      var fruitVegIds = new Set();
-      weekDishNamesM.forEach(function(dishName){
-        var dish = dishes.find(function(dd){ return dd.name === dishName; });
-        var rawIngs = dish ? (dish.ingredients||[]) : (aiDishIngredients[dishName]||[]);
-        rawIngs.forEach(function(ing){
-          var pantryItem;
-          var ingId = Number(ing);
-          if (!dish && !isNaN(ingId) && ingId > 0) {
-            pantryItem = items.find(function(it){ return it.id === ingId || it.id === ing; });
-          } else {
-            var k = String(ing).toLowerCase().trim();
-            pantryItem = items.find(function(it){ return it.name.toLowerCase().trim() === k; }) ||
-              items.find(function(it){ var n = it.name.toLowerCase().trim(); return n.includes(k) || k.includes(n); });
-          }
-          if (pantryItem && (pantryItem.cat === "fruit" || pantryItem.cat === "veg")) fruitVegIds.add(pantryItem.id);
-        });
-      });
-      var squareStyle = {
-        flex: 1, aspectRatio: "1", background: C.card, border: "1px solid " + C.border2, borderRadius: 12,
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        textAlign: "center", padding: 8
-      };
-      var squareLabelStyle = { fontSize: 10, color: C.dim, letterSpacing: 0.3, marginBottom: 4 };
-      var squareValueStyle = { fontSize: 20, fontWeight: 800, color: C.white, lineHeight: 1.1 };
-      var squareCaptionStyle = { fontSize: 10, color: C.dim2, marginTop: 2 };
       // ── 5 habit-tracker cards: Daily Rhythm (whole-day) + one per meal slot ──
       var cardStyle = { background: C.card, border: "1px solid " + C.border2, borderRadius: 16, padding: 16, marginBottom: 14 };
       function renderTrackerCard(opts) {
@@ -11523,7 +11490,7 @@ Only output the JSON. No markdown.`;
         renderTrackerCard({
           title: "Daily Rhythm", slotKey: null,
           kpis: [
-            { value: dailyWhole.wholeCount + "/" + dailyWhole.loggedCount, label: "whole-food days" },
+            { value: wholeFoodPct(dailyWhole), label: "whole-food days" },
             { value: homeCookedSlots + "/" + totalSlots, label: "meals home-cooked this week" }
           ]
         })
@@ -11533,28 +11500,10 @@ Only output the JSON. No markdown.`;
         var w = countWhole(mealCat);
         cards.push(renderTrackerCard({
           title: mealCat, slotKey: mealCat,
-          kpis: [ { value: w.wholeCount + "/" + w.loggedCount, label: "whole-food " + plural } ]
+          kpis: [ { value: wholeFoodPct(w), label: "whole-food " + plural } ]
         }));
       });
       return /*#__PURE__*/React.createElement("div", null,
-        /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "This week"),
-        /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 20 } },
-          /*#__PURE__*/React.createElement("div", { style: squareStyle },
-            /*#__PURE__*/React.createElement("div", { style: squareLabelStyle }, "This week's meals"),
-            /*#__PURE__*/React.createElement("div", { style: squareValueStyle }, homeCookedSlots + "/" + totalSlots),
-            /*#__PURE__*/React.createElement("div", { style: squareCaptionStyle }, "home-cooked")
-          ),
-          /*#__PURE__*/React.createElement("div", { style: squareStyle },
-            /*#__PURE__*/React.createElement("div", { style: squareLabelStyle }, "Pantry"),
-            /*#__PURE__*/React.createElement("div", { style: squareValueStyle }, processedPct + "%"),
-            /*#__PURE__*/React.createElement("div", { style: squareCaptionStyle }, "processed items")
-          ),
-          /*#__PURE__*/React.createElement("div", { style: squareStyle },
-            /*#__PURE__*/React.createElement("div", { style: squareLabelStyle }, "This week"),
-            /*#__PURE__*/React.createElement("div", { style: squareValueStyle }, fruitVegIds.size),
-            /*#__PURE__*/React.createElement("div", { style: squareCaptionStyle }, "fruits & veg")
-          )
-        ),
         cards,
         /*#__PURE__*/React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", rowGap: 8, columnGap: 10, marginBottom: 20 } },
           Object.keys(DAY_COLOR_HEX).map(function(c){
