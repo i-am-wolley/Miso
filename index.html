@@ -6158,7 +6158,7 @@ function DayCard({
   dayDate, isMichelinWeekendOverride,
   onRecipe, recipes, locked, onToggleLock, onSwap, swapLoading,
   onSaveDish, dishes, isConfirmed,
-  items, stock, aiDishIngredients, setStock, colorMode, dishNameFont
+  items, stock, aiDishIngredients, setStock, colorMode, dishNameFont, logActivity
 }) {
   if (!dayMenu) return null;
   const isLight = C.bg === "#f5f0ea" || C.bg === "#ebebeb" || C.bg === "#f0f0f0";
@@ -6322,6 +6322,7 @@ function DayCard({
                     n[m.id] = true; n[String(m.id)] = true;
                     return n;
                   });
+                  if (logActivity) logActivity("stock_available", m.name);
                 },
                 style: { color: noteColor, fontWeight: 700, cursor: setStock ? "pointer" : "default" }
               }, m.name)
@@ -6551,7 +6552,7 @@ function DayCardCarousel({
   today, tomorrow, menu, nextMenu, mealCats, WEEKEND,
   lockedDays, swapLoading, confirmedDays, dishes, recipes,
   fetchRecipe, setSwapModal, setDishes, haptic, C,
-  items, stock, aiDishIngredients, setStock, colorMode, dishNameFont
+  items, stock, aiDishIngredients, setStock, colorMode, dishNameFont, logActivity
 }) {
   // ── Swipeable Day Card Carousel ──
   const [carouselIdx, setCarouselIdx] = useState(0);
@@ -6655,7 +6656,7 @@ function DayCardCarousel({
             dishes: dishes,
             onSaveDish: saveDishFn(today.name),
             items: items, stock: stock, aiDishIngredients: aiDishIngredients, setStock: setStock,
-            colorMode: colorMode, dishNameFont: dishNameFont
+            colorMode: colorMode, dishNameFont: dishNameFont, logActivity: logActivity
           })
         ),
         // TOMORROW card
@@ -6678,7 +6679,7 @@ function DayCardCarousel({
             dishes: dishes,
             onSaveDish: saveDishFn(tomorrow.name),
             items: items, stock: stock, aiDishIngredients: aiDishIngredients, setStock: setStock,
-            colorMode: colorMode, dishNameFont: dishNameFont
+            colorMode: colorMode, dishNameFont: dishNameFont, logActivity: logActivity
           })
         )
       )
@@ -9321,8 +9322,8 @@ Only output the JSON. No markdown.`;
       var next = Object.assign({}, prev);
       next[dateKey] = snap;
       var keys = Object.keys(next).sort();
-      if (keys.length > 35) {
-        keys.slice(0, keys.length - 35).forEach(function(k){ delete next[k]; });
+      if (keys.length > 70) {
+        keys.slice(0, keys.length - 70).forEach(function(k){ delete next[k]; });
       }
       return next;
     });
@@ -10325,7 +10326,8 @@ Only output the JSON. No markdown.`;
     dishes: dishes, recipes: recipes, fetchRecipe: fetchRecipe,
     setSwapModal: setSwapModal, setDishes: setDishes,
     haptic: haptic, C: C, colorMode: colorMode, dishNameFont: dishNameFont,
-    items: items, stock: stock, aiDishIngredients: aiDishIngredients, setStock: setStock
+    items: items, stock: stock, aiDishIngredients: aiDishIngredients, setStock: setStock,
+    logActivity: logActivity
   }), (function(){
     // Build prep entries for a given day name from the correct menu.
     // Today is always in the current menu; tomorrow may be in nextMenu if it's Sunday.
@@ -10447,6 +10449,10 @@ Only output the JSON. No markdown.`;
               toStock.forEach(function(id){n[id]=true;});
               return n;
             });
+            logActivity("stock_available", toStock.map(function(id){
+              var it=items.find(function(i){return i.id===id;});
+              return it ? it.name : null;
+            }).filter(Boolean));
           }
         },
         style:{fontSize:11,color:C.dim,background:"transparent",border:"1px solid "+C.border2,
@@ -10576,6 +10582,7 @@ Only output the JSON. No markdown.`;
                 n[itemId]=!wasStocked; n[String(itemId)]=!wasStocked;
                 return n;
               });
+              logActivity(isStockedNow ? "stock_unavailable" : "stock_available", ing);
             }
           },
           title: "For: "+uniqueDishes.join(", ")+(entry.isAI?" (AI dish)":""),
@@ -10874,7 +10881,7 @@ Only output the JSON. No markdown.`;
       }
     },
     items: items, stock: stock, aiDishIngredients: aiDishIngredients, setStock: setStock,
-    colorMode: colorMode, dishNameFont: dishNameFont
+    colorMode: colorMode, dishNameFont: dishNameFont, logActivity: logActivity
   }))))), !showSettings && tab === "pantry" && /*#__PURE__*/React.createElement("div", {
     style: {
       height: "100%",
@@ -11370,18 +11377,18 @@ Only output the JSON. No markdown.`;
         mixed: "One meal out",
         heavy: "Convenience day"
       };
-      // ── 35-day rolling tracker — today is always the bottom-right square, oldest (34 days
-      // ago) is always top-left. Shifts by one square every day, not once a week. ──
+      // ── 70-day rolling tracker (5 rows x 14) — today is always the bottom-right square,
+      // oldest (69 days ago) is always top-left. Shifts by one square every day. ──
       var today = new Date();
-      var last35 = [];
-      for (var offset = 34; offset >= 0; offset--) {
+      var last70 = [];
+      for (var offset = 69; offset >= 0; offset--) {
         var d = new Date(today);
         d.setDate(today.getDate() - offset);
         var key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-        last35.push({ date: key, snap: dayLog[key] || null });
+        last70.push({ date: key, snap: dayLog[key] || null });
       }
       var weeks = [];
-      for (var r = 0; r < 5; r++) weeks.push(last35.slice(r * 7, r * 7 + 7));
+      for (var r = 0; r < 5; r++) weeks.push(last70.slice(r * 14, r * 14 + 14));
       // ── This week's stat tiles ──
       var weekPlan = (menu && menu.plan) || {};
       var totalSlots = 0, dineOutSlots = 0;
@@ -11445,7 +11452,7 @@ Only output the JSON. No markdown.`;
             /*#__PURE__*/React.createElement("div", { style: squareCaptionStyle }, "fruits & veg")
           )
         ),
-        /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "Last 5 weeks"),
+        /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "Last 70 days"),
         /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 } },
           weeks.map(function(week, wi) {
             return /*#__PURE__*/React.createElement("div", { key: wi, style: { display: "flex", gap: 4 } },
