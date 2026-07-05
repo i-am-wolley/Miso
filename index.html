@@ -9272,13 +9272,10 @@ Only output the JSON. No markdown.`;
       if (pantryByNameSnap[kn]) return pantryByNameSnap[kn];
       return items.find(function(it){ var n = it.name.toLowerCase().trim(); return n.includes(k) || k.includes(n); }) || null;
     }
-    var dineOutCount = 0;
-    var processedIds = new Set();
-    Object.values(dayPlan).forEach(function(dishName) {
-      if (!dishName) return;
-      if (dishName.indexOf("Dine Out") >= 0) { dineOutCount++; return; }
+    function resolveProcessedIds(dishName) {
       var dish = dishes.find(function(d){ return d.name === dishName; });
       var rawIngs = dish ? (dish.ingredients || []) : (aiDishIngredients[dishName] || []);
+      var ids = new Set();
       rawIngs.forEach(function(ing) {
         var pantryItem;
         var ingId = Number(ing);
@@ -9287,8 +9284,26 @@ Only output the JSON. No markdown.`;
         } else {
           pantryItem = findPantryItemSnap(ing);
         }
-        if (pantryItem && pantryItem.isProcessed) processedIds.add(pantryItem.id);
+        if (pantryItem && pantryItem.isProcessed) ids.add(pantryItem.id);
       });
+      return ids;
+    }
+    var dineOutCount = 0;
+    var processedIds = new Set();
+    var slots = {};
+    Object.entries(dayPlan).forEach(function(entry) {
+      var mealCat = entry[0], dishName = entry[1];
+      if (!dishName) return;
+      var isDineOut = dishName.indexOf("Dine Out") >= 0;
+      if (isDineOut) {
+        dineOutCount++;
+        slots[mealCat] = { color: "heavy", isDineOut: true };
+        return;
+      }
+      var slotProcessedIds = resolveProcessedIds(dishName);
+      slotProcessedIds.forEach(function(id){ processedIds.add(id); });
+      var slotColor = slotProcessedIds.size === 0 ? "whole" : slotProcessedIds.size === 1 ? "mostly" : "leaning";
+      slots[mealCat] = { color: slotColor, isDineOut: false, processedCount: slotProcessedIds.size };
     });
     var color;
     if (dineOutCount > 1 || processedIds.size > 6) color = "heavy";
@@ -9296,7 +9311,7 @@ Only output the JSON. No markdown.`;
     else if (processedIds.size === 0) color = "whole";
     else if (processedIds.size <= 3) color = "mostly";
     else color = "leaning";
-    return { dineOutCount: dineOutCount, processedCount: processedIds.size, color: color };
+    return { dineOutCount: dineOutCount, processedCount: processedIds.size, color: color, slots: slots };
   }
   function confirmDay(dayName, silent) {
     var activeMenu = menu; // confirm only from current week plan
@@ -9322,8 +9337,8 @@ Only output the JSON. No markdown.`;
       var next = Object.assign({}, prev);
       next[dateKey] = snap;
       var keys = Object.keys(next).sort();
-      if (keys.length > 70) {
-        keys.slice(0, keys.length - 70).forEach(function(k){ delete next[k]; });
+      if (keys.length > 84) {
+        keys.slice(0, keys.length - 84).forEach(function(k){ delete next[k]; });
       }
       return next;
     });
@@ -11377,18 +11392,45 @@ Only output the JSON. No markdown.`;
         mixed: "One meal out",
         heavy: "Convenience day"
       };
-      // ── 70-day rolling tracker (5 rows x 14) — today is always the bottom-right square,
-      // oldest (69 days ago) is always top-left. Shifts by one square every day. ──
+      // ── 84-day rolling window (12 weeks) feeding all 5 cards below — today is always the
+      // most recent entry, oldest (83 days ago) is always first. Shifts by one day daily. ──
       var today = new Date();
-      var last70 = [];
-      for (var offset = 69; offset >= 0; offset--) {
+      var last84 = [];
+      for (var offset = 83; offset >= 0; offset--) {
         var d = new Date(today);
         d.setDate(today.getDate() - offset);
         var key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-        last70.push({ date: key, snap: dayLog[key] || null });
+        last84.push({ date: key, snap: dayLog[key] || null });
       }
-      var weeks = [];
-      for (var r = 0; r < 5; r++) weeks.push(last70.slice(r * 14, r * 14 + 14));
+      function hasSlotData(snap, slotKey) {
+        if (!snap) return false;
+        return slotKey ? !!(snap.slots && snap.slots[slotKey]) : true;
+      }
+      function colorFor(snap, slotKey) {
+        return slotKey ? snap.slots[slotKey].color : snap.color;
+      }
+      // Consecutive "whole" days/slots, walking back from the most recently *logged* date —
+      // skips past an unlogged "today" (day not over yet) rather than zeroing the streak out.
+      function computeStreak(slotKey) {
+        var streak = 0, started = false;
+        for (var i = last84.length - 1; i >= 0; i--) {
+          var snap = last84[i].snap;
+          if (!hasSlotData(snap, slotKey)) { if (started) break; else continue; }
+          started = true;
+          if (colorFor(snap, slotKey) !== "whole") break;
+          streak++;
+        }
+        return streak;
+      }
+      function countWhole(slotKey) {
+        var wholeCount = 0, loggedCount = 0;
+        last84.forEach(function(d){
+          if (!hasSlotData(d.snap, slotKey)) return;
+          loggedCount++;
+          if (colorFor(d.snap, slotKey) === "whole") wholeCount++;
+        });
+        return { wholeCount: wholeCount, loggedCount: loggedCount };
+      }
       // ── This week's stat tiles ──
       var weekPlan = (menu && menu.plan) || {};
       var totalSlots = 0, dineOutSlots = 0;
@@ -11433,6 +11475,67 @@ Only output the JSON. No markdown.`;
       var squareLabelStyle = { fontSize: 10, color: C.dim, letterSpacing: 0.3, marginBottom: 4 };
       var squareValueStyle = { fontSize: 20, fontWeight: 800, color: C.white, lineHeight: 1.1 };
       var squareCaptionStyle = { fontSize: 10, color: C.dim2, marginTop: 2 };
+      // ── 5 habit-tracker cards: Daily Rhythm (whole-day) + one per meal slot ──
+      var cardStyle = { background: C.card, border: "1px solid " + C.border2, borderRadius: 16, padding: 16, marginBottom: 14 };
+      function renderTrackerCard(opts) {
+        var streak = computeStreak(opts.slotKey);
+        var rows = [];
+        for (var r = 0; r < 3; r++) rows.push(last84.slice(r * 28, r * 28 + 28));
+        return /*#__PURE__*/React.createElement("div", { key: opts.title, style: cardStyle },
+          /*#__PURE__*/React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } },
+            /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: C.white } }, opts.title),
+            streak > 0 && /*#__PURE__*/React.createElement("div", {
+              style: { fontSize: 11, fontWeight: 700, color: "#E3A14E", background: "rgba(227,161,78,0.14)", borderRadius: 20, padding: "3px 10px" }
+            }, "🔥 " + streak + "d")
+          ),
+          /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 16, marginBottom: 12 } },
+            opts.kpis.map(function(kpi, i){
+              return /*#__PURE__*/React.createElement("div", { key: i },
+                /*#__PURE__*/React.createElement("div", { style: { fontSize: 16, fontWeight: 800, color: C.white } }, kpi.value),
+                /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: C.dim2, marginTop: 2 } }, kpi.label)
+              );
+            })
+          ),
+          /*#__PURE__*/React.createElement("div", { style: { borderTop: "1px dashed " + C.border2, marginBottom: 10 } }),
+          /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 3 } },
+            rows.map(function(row, ri){
+              return /*#__PURE__*/React.createElement("div", { key: ri, style: { display: "flex", gap: 3 } },
+                row.map(function(d){
+                  var hasData = hasSlotData(d.snap, opts.slotKey);
+                  var color = hasData ? colorFor(d.snap, opts.slotKey) : null;
+                  return /*#__PURE__*/React.createElement("div", {
+                    key: d.date,
+                    title: color ? (d.date + " — " + DAY_COLOR_LABEL[color]) : d.date,
+                    style: {
+                      flex: 1, aspectRatio: "1", borderRadius: 3,
+                      background: color ? DAY_COLOR_HEX[color] : C.bg,
+                      border: "1px solid " + (color ? DAY_COLOR_HEX[color] : C.border2)
+                    }
+                  });
+                })
+              );
+            })
+          )
+        );
+      }
+      var dailyWhole = countWhole(null);
+      var cards = [
+        renderTrackerCard({
+          title: "Daily Rhythm", slotKey: null,
+          kpis: [
+            { value: dailyWhole.wholeCount + "/" + dailyWhole.loggedCount, label: "whole-food days" },
+            { value: homeCookedSlots + "/" + totalSlots, label: "meals home-cooked this week" }
+          ]
+        })
+      ];
+      [["Breakfast","breakfasts"],["Lunch","lunches"],["Snacks","snacks"],["Dinner","dinners"]].forEach(function(pair){
+        var mealCat = pair[0], plural = pair[1];
+        var w = countWhole(mealCat);
+        cards.push(renderTrackerCard({
+          title: mealCat, slotKey: mealCat,
+          kpis: [ { value: w.wholeCount + "/" + w.loggedCount, label: "whole-food " + plural } ]
+        }));
+      });
       return /*#__PURE__*/React.createElement("div", null,
         /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "This week"),
         /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 20 } },
@@ -11452,24 +11555,7 @@ Only output the JSON. No markdown.`;
             /*#__PURE__*/React.createElement("div", { style: squareCaptionStyle }, "fruits & veg")
           )
         ),
-        /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, letterSpacing: 1, fontWeight: 700, marginBottom: 10 } }, "Last 10 weeks"),
-        /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 } },
-          weeks.map(function(week, wi) {
-            return /*#__PURE__*/React.createElement("div", { key: wi, style: { display: "flex", gap: 4 } },
-              week.map(function(day) {
-                return /*#__PURE__*/React.createElement("div", {
-                  key: day.date,
-                  title: day.snap ? (day.date + " — " + DAY_COLOR_LABEL[day.snap.color]) : day.date,
-                  style: {
-                    flex: 1, aspectRatio: "1", borderRadius: 6,
-                    background: day.snap ? DAY_COLOR_HEX[day.snap.color] : C.bg,
-                    border: "1px solid " + (day.snap ? DAY_COLOR_HEX[day.snap.color] : C.border2)
-                  }
-                });
-              })
-            );
-          })
-        ),
+        cards,
         /*#__PURE__*/React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", rowGap: 8, columnGap: 10, marginBottom: 20 } },
           Object.keys(DAY_COLOR_HEX).map(function(c){
             return /*#__PURE__*/React.createElement("div", { key: c, style: { display: "flex", alignItems: "center", gap: 5 } },
