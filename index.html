@@ -9423,10 +9423,21 @@ Only output the JSON. No markdown.`;
       var now = new Date();
       var fireAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
       if (fireAt <= now) fireAt.setDate(fireAt.getDate() + 1);
+      var nextSunday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0, 0, 0);
+      nextSunday.setDate(now.getDate() + ((7 - now.getDay()) % 7));
+      if (nextSunday <= now) nextSunday.setDate(nextSunday.getDate() + 7);
       await LN.schedule({ notifications: [{
         id: 1001, title: "Miso",
         body: "Your pantry needs a top-up for this week’s plan",
         schedule: { at: fireAt, repeats: true, every: "day" },
+        actionTypeId: "", extra: null
+      }, {
+        // Weekly recap: body is necessarily static text (LocalNotifications bakes it in at
+        // schedule time and can't recompute it when it actually fires) -- the real numbers
+        // from dayLog/activityLog show once they open the Metrics tab.
+        id: 1002, title: "Miso",
+        body: "Your week in review is ready 🌿",
+        schedule: { at: nextSunday, repeats: true, every: "week" },
         actionTypeId: "", extra: null
       }]});
     } catch(e) {}
@@ -9434,7 +9445,7 @@ Only output the JSON. No markdown.`;
   async function cancelNotification() {
     var LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
     if (!LN) return;
-    try { await LN.cancel({ notifications: [{ id: 1001 }] }); } catch(e) {}
+    try { await LN.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }); } catch(e) {}
   }
   useEffect(function(){
     if (!loaded || !notificationsEnabled || !menu || !menu.plan) return;
