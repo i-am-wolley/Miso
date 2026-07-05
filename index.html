@@ -11529,9 +11529,7 @@ Only output the JSON. No markdown.`;
         return { wholeCount: wholeCount, loggedCount: loggedCount };
       }
       function wholeFoodKpi(w, label) {
-        return w.loggedCount === 0
-          ? { kind: "text", value: "—", label: label }
-          : { kind: "pct", value: Math.round(w.wholeCount / w.loggedCount * 100), label: label };
+        return { kind: "pct", value: w.loggedCount === 0 ? 0 : Math.round(w.wholeCount / w.loggedCount * 100), label: label };
       }
       // Still needed by the Daily Rhythm card's "meals home-cooked this week" KPI
       var weekPlan = (menu && menu.plan) || {};
@@ -11550,7 +11548,7 @@ Only output the JSON. No markdown.`;
         return /*#__PURE__*/React.createElement("div", { key: opts.title, style: cardStyle },
           /*#__PURE__*/React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } },
             /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: C.white } }, opts.title),
-            streak > 0 && /*#__PURE__*/React.createElement("div", {
+            /*#__PURE__*/React.createElement("div", {
               style: { fontSize: 11, fontWeight: 700, color: "#E3A14E", background: "rgba(227,161,78,0.14)", borderRadius: 20, padding: "3px 10px" }
             }, "🔥 ", /*#__PURE__*/React.createElement(AnimatedNumber, { value: streak, format: function(v){ return Math.round(v) + "d"; } }))
           ),
