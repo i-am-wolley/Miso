@@ -7683,9 +7683,39 @@ function App() {
   function doEditDish() {
     if (!editDishModal) return;
     haptic("medium");
+    var oldDish = dishes.find(function(d) { return d.id === editDishModal.id; });
+    var oldName = oldDish && oldDish.name;
+    var newName = editDishModal.name;
+    var renamed = !!(oldName && newName && oldName !== newName);
     setDishes(function(p) { return p.map(function(d) {
       return d.id === editDishModal.id ? Object.assign({}, d, editDishModal) : d;
     }); });
+    if (renamed) {
+      var renamePlan = function(prev) {
+        if (!prev || !prev.plan) return prev;
+        var newPlan = {};
+        Object.keys(prev.plan).forEach(function(day) {
+          var dayPlan = prev.plan[day] || {};
+          var newDayPlan = {};
+          Object.keys(dayPlan).forEach(function(mc) {
+            newDayPlan[mc] = dayPlan[mc] === oldName ? newName : dayPlan[mc];
+          });
+          newPlan[day] = newDayPlan;
+        });
+        return Object.assign({}, prev, { plan: newPlan });
+      };
+      var renameKey = function(prev) {
+        if (!prev || !prev[oldName]) return prev;
+        var next = Object.assign({}, prev);
+        next[newName] = next[oldName];
+        delete next[oldName];
+        return next;
+      };
+      setMenu(renamePlan);
+      setNextMenu(renamePlan);
+      setRecipes(renameKey);
+      setAiDishIngredients(renameKey);
+    }
     setEditDishModal(null);
     setEditDishAdvanced(false);
     setEditIngSearch("");
@@ -11489,13 +11519,20 @@ Only output the JSON. No markdown.`;
         mixed: "One meal out",
         heavy: "Convenience day"
       };
-      // ── 84-day rolling window (12 weeks) feeding all 5 cards below — today is always the
-      // most recent entry, oldest (83 days ago) is always first. Shifts by one day daily. ──
+      // ── 84-day rolling window (12 weeks) feeding all 5 cards below. Anchored to the most
+      // recently *confirmed* day (not the calendar date) so the last square is never a blank
+      // "today hasn't been confirmed yet" cell — it only appears once confirmDay() logs it. ──
       var today = new Date();
+      var loggedDayKeys = Object.keys(dayLog || {}).sort();
+      var anchor = today;
+      if (loggedDayKeys.length) {
+        var lastLoggedDate = new Date(loggedDayKeys[loggedDayKeys.length - 1] + "T00:00:00");
+        if (lastLoggedDate <= today) anchor = lastLoggedDate;
+      }
       var last84 = [];
       for (var offset = 83; offset >= 0; offset--) {
-        var d = new Date(today);
-        d.setDate(today.getDate() - offset);
+        var d = new Date(anchor);
+        d.setDate(anchor.getDate() - offset);
         var key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
         last84.push({ date: key, snap: dayLog[key] || null });
       }
@@ -12831,7 +12868,7 @@ Only output the JSON. No markdown.`;
   }, /*#__PURE__*/React.createElement("div", {
     onClick:function(e){e.stopPropagation();},
     style:{background:C.card,border:"none",borderRadius:20,boxShadow:"0 8px 32px rgba(0,0,0,0.25)",
-      padding:20,width:"100%",maxWidth:380}
+      padding:20,width:"100%",maxWidth:380,maxHeight:"85vh",overflowY:"auto",WebkitOverflowScrolling:"touch"}
   },
     /*#__PURE__*/React.createElement("div",{style:{fontSize:14,fontWeight:700,color:C.white,marginBottom:2}},"Change This Dish"),
     /*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:C.dim,marginBottom:14}},
@@ -12866,8 +12903,8 @@ Only output the JSON. No markdown.`;
           /*#__PURE__*/React.createElement("div",{style:{fontSize:12,fontWeight:700,color:C.white,marginBottom:6,letterSpacing:0.5}},"📦 My Dishes"),
           stocked.length===0
             ? /*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:C.dim2}},"No other stocked "+swapModal.mealCat+" dishes available")
-            : /*#__PURE__*/React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:5}},
-                stocked.slice(0,8).map(function(d){
+            : /*#__PURE__*/React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:5,maxHeight:150,overflowY:"auto",WebkitOverflowScrolling:"touch"}},
+                stocked.map(function(d){
                   return /*#__PURE__*/React.createElement("button",{
                     key:d.name,
                     onClick:function(){ pickDish(d); },
@@ -12881,8 +12918,8 @@ Only output the JSON. No markdown.`;
           }, swapShowUnstocked ? "Show less" : "+"+unstocked.length+" more (missing ingredients)"),
           unstocked.length>0 && swapShowUnstocked && /*#__PURE__*/React.createElement("div",{style:{marginTop:8}},
             /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:C.dim2,marginBottom:5}},"Missing some ingredients — they'll be added to your shopping list"),
-            /*#__PURE__*/React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:5}},
-              unstocked.slice(0,8).map(function(d){
+            /*#__PURE__*/React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:5,maxHeight:150,overflowY:"auto",WebkitOverflowScrolling:"touch"}},
+              unstocked.map(function(d){
                 return /*#__PURE__*/React.createElement("button",{
                   key:d.name,
                   onClick:function(){ pickDish(d); },
