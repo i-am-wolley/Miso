@@ -8357,7 +8357,7 @@ function App() {
       contents: [{ parts: [{ text: fullPrompt }] }],
       generationConfig: { maxOutputTokens: maxTokens }
     });
-    var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + geminiKey;
+    var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-Lite:generateContent?key=" + geminiKey;
     var maxAttempts = 3;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       var res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: body });
@@ -8602,7 +8602,7 @@ Use ONLY stocked pantry ingredients. Dish name must be 30 characters or fewer (i
       contents: [{ parts: parts }],
       generationConfig: { maxOutputTokens: 2000 }
     });
-    var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + geminiKey;
+    var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-Lite:generateContent?key=" + geminiKey;
     var res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body });
     if (!res.ok) throw new Error("Gemini " + res.status);
     var data = await res.json();
