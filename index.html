@@ -7326,6 +7326,27 @@ function App() {
         try { var di = storage.get(SK.dishes); if (di) setDishes(JSON.parse(di)); } catch(e) {}
         try { var st = storage.get(SK.stock); if (st) setStock(JSON.parse(st)); } catch(e) {}
         try { var it = storage.get(SK.items); if (it) setItems(JSON.parse(it)); } catch(e) {}
+        try { var sadi = storage.get(SK.aiDishIng); if (sadi) setAiDishIngredients(JSON.parse(sadi)); } catch(e) {}
+        try { var smc2 = storage.get(SK.mealCats); if (smc2) setMealCats(JSON.parse(smc2)); } catch(e) {}
+        try { var sr = storage.get(SK.recipes); if (sr) setRecipes(JSON.parse(sr)); } catch(e) {}
+        try { var sab = storage.get(SK.autoBackup); if (sab) setAutoBackup(JSON.parse(sab)); } catch(e) {}
+        try { var san = storage.get(SK.autoNutrition); if (san) setAutoNutrition(JSON.parse(san)); } catch(e) {}
+        try { var scui = storage.get(SK.cuisines); if (scui) setCuisines(JSON.parse(scui)); } catch(e) {}
+        try { var sdt = storage.get(SK.dietary); if (sdt) setDietary(JSON.parse(sdt)); } catch(e) {}
+        try { var smac = storage.get(SK.macros); if (smac) setMacros(JSON.parse(smac)); } catch(e) {}
+        try { var sth = storage.get(SK.theme); if (sth) setTheme(JSON.parse(sth)); } catch(e) {}
+        try { var scm = storage.get(SK.colorMode); if (scm) setColorMode(JSON.parse(scm)); } catch(e) {}
+        try { var sct = storage.get(SK.cookTime); if (sct) setCookTime(JSON.parse(sct)); } catch(e) {}
+        try { var smw = storage.get(SK.michelinWeekend); if (smw != null) setMichelinWeekend(JSON.parse(smw)); } catch(e) {}
+        try { var scn = storage.get(SK.showCookNow); if (scn != null) setShowCookNow(JSON.parse(scn)); } catch(e) {}
+        try { var sdas = storage.get(SK.defaultAiSlots); if (sdas) setDefaultAiSlots(JSON.parse(sdas)); } catch(e) {}
+        try { var slag = storage.get(SK.lastAutoGen); if (slag) setLastAutoGen(slag); } catch(e) {}
+        try { var sk = storage.get(SK.apiKey); if (sk) setApiKey(sk); } catch(e) {}
+        try { var sgk = storage.get(SK.geminiKey); if (sgk) setGeminiKey(sgk); } catch(e) {}
+        try { var saie = storage.get(SK.aiEnabled); if (saie !== null) setAiEnabled(JSON.parse(saie)); } catch(e) {}
+        try { var sall = storage.get(SK.activeAllergens); if (sall) setActiveAllergens(JSON.parse(sall)); } catch(e) {}
+        try { var sdnf = storage.get(SK.dishNameFont); if (sdnf) setDishNameFont(JSON.parse(sdnf)); } catch(e) {}
+        try { var sac = storage.get(SK.apiCost); if (sac) setApiCost(parseFloat(sac) || 0); } catch(e) {}
         showToast("Synced", "success");
       } catch(e) {}
     })();
