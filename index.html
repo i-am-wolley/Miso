@@ -3301,6 +3301,9 @@ function parseRecipeMD(md) {
   return out;
 }
 function filterToPantryIngredients(raw, items) {
+  // Match against the live pantry first so user-added items resolve; fall back to the
+  // static default list for names the user hasn't added to their pantry yet.
+  var pool = (items && items.length) ? items.concat(DEFAULT_ITEMS) : DEFAULT_ITEMS;
   return (raw||[]).map(function(ing){
     var asNum = Number(ing);
     if (!isNaN(asNum) && asNum > 0) {
@@ -3309,13 +3312,13 @@ function filterToPantryIngredients(raw, items) {
     }
     var sl = normIngName2(ing);
     if (!sl) return null;
-    var exact = DEFAULT_ITEMS.find(function(di){ return normIngName2(di.name) === sl; });
+    var exact = pool.find(function(di){ return normIngName2(di.name) === sl; });
     if (exact) return exact.name;
     // whole-word token match — rescues phrases like "Fresh Coriander Leaves" -> "Coriander",
     // "Mint Leaves" -> "Mint", "Spring Onions" -> "Spring Onion", while avoiding loose
     // substring false-positives (e.g. "Herbs" should NOT match "Herbal Tea").
     var slWords = sl.split(/\s+/);
-    var fuzzy = DEFAULT_ITEMS.find(function(di){
+    var fuzzy = pool.find(function(di){
       var dn = normIngName2(di.name);
       if (dn.length < 3) return false;
       var dnWords = dn.split(/\s+/);
@@ -7754,6 +7757,23 @@ function App() {
     setDishes(p => p.filter(d => d.id !== id));
     if (dish) logActivity("dish_deleted", dish.name);
   };
+  function addAiDishToMyDishes(name, mealCat) {
+    if (dishes.some(function(d){ return d.name === name; })) return;
+    setDishes(p => [...p, {
+      id: Date.now(),
+      name: name,
+      mealCats: [mealCat || "Dinner"],
+      ingredients: resolveAiIngredients(name, items, aiDishIngredients),
+      mustInclude: false,
+      mustIncludeIngredient: "",
+      timesPerWeek: 0,
+      pairWith: [],
+      makesLeftovers: false,
+      leftoverMeal: "",
+      leftoverSlot: ""
+    }]);
+    logActivity("dish_created", name);
+  }
   const toggleIng = name => { haptic("light"); setDishData(d => ({
     ...d,
     ingredients: d.ingredients.includes(name) ? d.ingredients.filter(i => i !== name) : [...d.ingredients, name]
