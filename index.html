@@ -8879,16 +8879,28 @@ Use ONLY stocked pantry ingredients. Dish name must be 30 characters or fewer (i
     if(!(apiKey || geminiKey)) { setAiGateModal("no-key"); return; }
     setRecipeModal(dishName);
     var STAPLE=["oil","salt","water","sugar","black pepper","cooking oil"];
-    var stockByCat={};
-    (typeof PANTRY_CATEGORIES!=="undefined"?PANTRY_CATEGORIES:[]).forEach(function(pc){
-      var names=stockedItems.filter(function(i){return i.cat===pc.id;}).map(function(i){return i.name;});
-      if(names.length) stockByCat[pc.label]=names;
-    });
-    var stockDesc=Object.entries(stockByCat).map(function(e){return e[0]+": "+e[1].join(", ");}).join("; ")||"various";
+    // Reuse the ingredients already mapped for this dish (from weekly generation, or from
+    // the dish's own saved ingredient list) so the recipe matches what's already driving
+    // stock/shopping — instead of independently re-guessing from the whole stocked pantry.
+    var savedDish=dishes.find(function(d){return d.name===dishName;});
+    var mappedIngredients=resolveAiIngredients(dishName, items, savedDish ? {[dishName]: savedDish.ingredients||[]} : aiDishIngredients);
+    var stockDesc;
+    if(mappedIngredients.length>0){
+      stockDesc=mappedIngredients.join(", ");
+    } else {
+      var stockByCat={};
+      (typeof PANTRY_CATEGORIES!=="undefined"?PANTRY_CATEGORIES:[]).forEach(function(pc){
+        var names=stockedItems.filter(function(i){return i.cat===pc.id;}).map(function(i){return i.name;});
+        if(names.length) stockByCat[pc.label]=names;
+      });
+      stockDesc=Object.entries(stockByCat).map(function(e){return e[0]+": "+e[1].join(", ");}).join("; ")||"various";
+    }
     var dietFlags=Object.keys(dietary||{}).filter(function(k){return dietary[k];});
     if(cuisines&&cuisines.includes("vegan")&&!dietFlags.includes("Vegan")) dietFlags=dietFlags.concat(["Vegan"]);
     var prompt="Write a recipe for: "+dishName+".\n"+
-      "Use ONLY these pantry ingredients: "+stockDesc+". Staples always available: "+STAPLE.join(", ")+".\n"+
+      (mappedIngredients.length>0
+        ? "Use ONLY these specific ingredients already selected for this dish: "+stockDesc+". Staples always available: "+STAPLE.join(", ")+".\n"
+        : "Use ONLY these pantry ingredients: "+stockDesc+". Staples always available: "+STAPLE.join(", ")+".\n")+
       (dietFlags.length?"Dietary: "+dietFlags.join(", ")+".\n":"")+
       "Respond in EXACTLY this markdown structure, nothing else:\n"+
       "## Ingredients\n"+
