@@ -7325,6 +7325,7 @@ function App() {
         try { var ld = storage.get(SK.lockedDays); if (ld) setLockedDays(JSON.parse(ld)); } catch(e) {}
         try { var di = storage.get(SK.dishes); if (di) setDishes(JSON.parse(di)); } catch(e) {}
         try { var st = storage.get(SK.stock); if (st) setStock(JSON.parse(st)); } catch(e) {}
+        try { var it = storage.get(SK.items); if (it) setItems(JSON.parse(it)); } catch(e) {}
         showToast("Synced", "success");
       } catch(e) {}
     })();
