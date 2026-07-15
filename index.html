@@ -9453,7 +9453,7 @@ Only output the JSON. No markdown.`;
     var color;
     if (dineOutCount > 1 || processedIds.size > 6) color = "heavy";
     else if (dineOutCount === 1) color = "mixed";
-    else if (processedIds.size === 0) color = "whole";
+    else if (processedIds.size <= 1) color = "whole";
     else if (processedIds.size <= 3) color = "mostly";
     else color = "leaning";
     return { dineOutCount: dineOutCount, processedCount: processedIds.size, color: color, slots: slots };
