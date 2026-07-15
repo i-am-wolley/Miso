@@ -1,0 +1,36 @@
+// DRAFT — reconcile against the live console rules before deploying (Phase 0.7:
+// `firebase firestore:rules:get`). No firestore.rules file existed in this repo before
+// this change; rules were console-managed. This draft models the access pattern the
+// client code actually uses (households/{code} membership + data/{key} sync, users/{uid}
+// householdCode pointer) plus the new aiQuota lockdown. Do not assume it is a byte-for-byte
+// match for what's live today — merge with the pulled rules, then deploy.
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isMember(householdCode) {
+      return request.auth != null &&
+        request.auth.uid in get(/databases/$(database)/documents/households/$(householdCode)).data.members;
+    }
+
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /households/{code} {
+      allow read: if isMember(code);
+      allow write: if request.auth != null;
+
+      match /data/{key} {
+        allow read, write: if isMember(code);
+      }
+
+      // Server-authoritative quota counter for the managed AI proxy — the Cloud Function
+      // uses the Admin SDK, which bypasses these rules entirely. No client ever needs
+      // direct access to this collection.
+      match /aiQuota/{day} {
+        allow read, write: if false;
+      }
+    }
+  }
+}

@@ -474,6 +474,8 @@ const _fbDb   = firebase.firestore();
 const _fbGoogleProvider = new firebase.auth.GoogleAuthProvider();
 
 const GEMINI_API_KEY = "";
+// Native apps route AI calls through this Cloud Function proxy instead of a client-held key.
+const MANAGED_AI_URL = "https://us-central1-pantry-os-prod.cloudfunctions.net/generateAiContent";
 
 var _householdCode = localStorage.getItem("_pantryos_hh") || null;
 // Gated to false until after _syncFromFirestore completes, so early storage effects
@@ -6769,6 +6771,23 @@ function DayCardCarousel({
 
 var _isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 
+if (_isNative) {
+  var _fbAppCheckPlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseAppCheck;
+  if (_fbAppCheckPlugin) {
+    _fbAppCheckPlugin.initialize({ isTokenAutoRefreshEnabled: true }).catch(function(e){ console.warn("[AppCheck] init failed", e); });
+  }
+}
+
+async function _getAppCheckToken() {
+  if (!_isNative) return "";
+  try {
+    var FirebaseAppCheck = window.Capacitor.Plugins.FirebaseAppCheck;
+    if (!FirebaseAppCheck) return "";
+    var result = await FirebaseAppCheck.getToken({ forceRefresh: false });
+    return result.token || "";
+  } catch (e) { console.warn("[AppCheck] token fetch failed", e); return ""; }
+}
+
 function useAuth() {
   const [user, setUser] = React.useState(_fbAuth.currentUser);
   // authReady becomes true once onAuthStateChanged has fully resolved (including sync).
@@ -7011,6 +7030,8 @@ function App() {
   const [prepTodayDismissed, setPrepTodayDismissed] = useState(false);
   const [prepTomDismissed, setPrepTomDismissed] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(true);
+  // Native apps use the managed AI backend (no key needed); web stays BYOK.
+  const aiKeyPresent = _isNative || !!(apiKey || geminiKey);
   const [aiGateModal, setAiGateModal] = useState(null);
   const [menuGapModal, setMenuGapModal] = useState(null); // null | { count, reasons:[] }
   const [activeAllergens, setActiveAllergens] = useState([]);
@@ -7439,7 +7460,7 @@ function App() {
   // (catches failed initial fetch during generation). Intentionally excludes
   // aiDishIngredients from deps to avoid loop — uses snapshot at fire time.
   useEffect(() => {
-    if (!loaded || !(apiKey || geminiKey)) return;
+    if (!loaded || !aiKeyPresent) return;
     var activeM = nextMenu || menu;
     if (!activeM || !activeM.plan) return;
     var dishNameSet = new Set(dishes.map(function(d){return d.name;}));
@@ -7919,7 +7940,7 @@ function App() {
 
     if(_genMode==="allai"){
       // ALL AI: full AI for every non-locked slot
-      if(!(apiKey || geminiKey)){ setAiError("No AI key. Go to Settings."); setAiLoading(false); return; }
+      if(!aiKeyPresent){ setAiError("No AI key. Go to Settings."); setAiLoading(false); return; }
       var tmpl=remainingDays.map(function(d){
         var slots=mealCats.map(function(mc){
           if(plan[d][mc]!==null) return '"'+mc+'":"'+plan[d][mc]+'"';
@@ -8195,7 +8216,7 @@ function App() {
       });
 
       // Call AI for AI slots (skip if AI unavailable — unfilled slots trigger post-gen warning)
-      if(aiSlotsNeeded.length>0 && aiEnabled && (apiKey || geminiKey)){
+      if(aiSlotsNeeded.length>0 && aiEnabled && aiKeyPresent){
         var allDishNames=dishes.map(function(d){return d.name;});
         var aiTmpl="{\n"+aiSlotsNeeded.map(function(s){
           var isWE=WEEKEND.includes(s.day);
@@ -8247,7 +8268,7 @@ function App() {
     }
 
     // ── Fetch ingredients for AI-generated dishes (batch call) ──
-    if(apiKey || geminiKey){
+    if(aiKeyPresent){
       var dishNameSet3=new Set(dishes.map(function(d){return d.name;}));
       var aiDishNames=[];
       Object.values(plan).forEach(function(dayPlan){
@@ -8429,7 +8450,21 @@ function App() {
     }
   }
 
+  async function callManagedAI({ system, prompt, maxTokens }) {
+    var idToken = await _fbAuth.currentUser.getIdToken();
+    var appCheckToken = await _getAppCheckToken();
+    var res = await fetch(MANAGED_AI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken, "X-Firebase-AppCheck": appCheckToken },
+      body: JSON.stringify({ householdCode: _householdCode, system: system, prompt: prompt, maxTokens: maxTokens })
+    });
+    if (!res.ok) { var e = await res.json().catch(function() { return {}; }); throw new Error(e.error || ("AI " + res.status)); }
+    var data = await res.json();
+    return { text: data.text || "", json: data.json || repairAndParse(data.text || "") };
+  }
+
   async function callAI({ system, prompt, maxTokens, stream = false }) {
+    if (_isNative) return callManagedAI({ system, prompt, maxTokens });
     if (geminiKey && !apiKey) return callGemini({ system, prompt, maxTokens });
     if (!apiKey && !geminiKey) throw new Error("No AI key set. Add a Gemini or Claude key in Settings.");
     var body = {
@@ -8551,7 +8586,7 @@ function App() {
       // No inventory dish found → fall through to AI
     }
 
-    if (!(apiKey || geminiKey)) {
+    if (!aiKeyPresent) {
       setSwapError("No AI key. Go to Settings.");
       setSwapLoading(false);
       return;
@@ -8599,7 +8634,7 @@ Use ONLY stocked pantry ingredients. Dish name must be 30 characters or fewer (i
           return updated;
         });
         // Fetch ingredients for the newly swapped-in AI dish
-        if(newDish && (apiKey || geminiKey)){
+        if(newDish && aiKeyPresent){
           var dishNameSet4=new Set(dishes.map(function(d){return d.name;}));
           if(!dishNameSet4.has(newDish) && !aiDishIngredients[newDish]){
             try{
@@ -8674,9 +8709,23 @@ Use ONLY stocked pantry ingredients. Dish name must be 30 characters or fewer (i
     return repairAndParse(text);
   }
 
+  async function callManagedVision({ photos, prompt }) {
+    var idToken = await _fbAuth.currentUser.getIdToken();
+    var appCheckToken = await _getAppCheckToken();
+    var res = await fetch(MANAGED_AI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken, "X-Firebase-AppCheck": appCheckToken },
+      body: JSON.stringify({ householdCode: _householdCode, prompt: prompt, maxTokens: 2000, images: photos })
+    });
+    if (!res.ok) throw new Error("AI " + res.status);
+    var data = await res.json();
+    return data.json || repairAndParse(data.text || "");
+  }
+
   async function scanDishFromImages(photos) {
     var photoWord = photos.length > 1 ? "these photos" : "this photo";
     var prompt = SCAN_SYSTEM + "\n\nIdentify the dish in " + photoWord + ". IMPORTANT: the dish name must be 30 characters or fewer (including spaces) — use a concise, natural name. Recipe steps should be clear and concise — just what to do, no explanations of why. Return JSON matching this schema exactly:\n" + SCAN_SCHEMA + "\nIf you cannot identify a dish, return {\"error\":\"Could not identify dish\"}.";
+    if (_isNative) return await callManagedVision({ photos, prompt });
     return geminiKey ? await callGeminiVision({ photos, prompt }) : await callClaudeVision({ photos, prompt });
   }
 
@@ -8692,7 +8741,7 @@ Use ONLY stocked pantry ingredients. Dish name must be 30 characters or fewer (i
 
   function openScanModal() {
     if (!aiEnabled) { setAiGateModal("disabled"); return; }
-    if (!apiKey && !geminiKey) { setAiGateModal("no-key"); return; }
+    if (!aiKeyPresent) { setAiGateModal("no-key"); return; }
     setScanResult(null);
     setScanUrl("");
     setScanModal("choose");
@@ -8811,6 +8860,7 @@ Use ONLY stocked pantry ingredients. Dish name must be 30 characters or fewer (i
   // ── Receipt scan — stock pantry from grocery receipt photo ──
   async function scanReceiptFromImage(base64, mimeType) {
     var prompt = "You are a grocery receipt scanner. Extract ALL food and household product names visible on this receipt. Return ONLY valid JSON with this schema: {\"items\":[\"product name\",\"product name\",...]}. Use clean, recognisable names (e.g. 'Milk', 'Eggs', 'Tomatoes', 'Chicken Breast'). If this is not a grocery receipt or no items are found, return {\"error\":\"Not a receipt\"}.";
+    if (_isNative) return await callManagedVision({ photos: [{ base64, mimeType }], prompt });
     return geminiKey ? await callGeminiVision({ photos: [{ base64, mimeType }], prompt }) : await callClaudeVision({ photos: [{ base64, mimeType }], prompt });
   }
 
@@ -8876,7 +8926,7 @@ Use ONLY stocked pantry ingredients. Dish name must be 30 characters or fewer (i
       return;
     }
     if(!aiEnabled) { setAiGateModal("disabled"); return; }
-    if(!(apiKey || geminiKey)) { setAiGateModal("no-key"); return; }
+    if(!aiKeyPresent) { setAiGateModal("no-key"); return; }
     setRecipeModal(dishName);
     var STAPLE=["oil","salt","water","sugar","black pepper","cooking oil"];
     // Reuse the ingredients already mapped for this dish (from weekly generation, or from
@@ -8932,7 +8982,7 @@ Use ONLY stocked pantry ingredients. Dish name must be 30 characters or fewer (i
     if (!menuToUse || !menuToUse.plan) {
       return;
     }
-    if (!(apiKey || geminiKey)) {
+    if (!aiKeyPresent) {
       return;
     }
     setNutLoading(true);
@@ -9189,7 +9239,7 @@ Only output the JSON. No markdown.`;
     // Take up to 2 inventory dishes
     var matchedDishes = allMatched.slice(0,2);
 
-    if (!(apiKey || geminiKey)) {
+    if (!aiKeyPresent) {
       // No AI key — show the non-AI matches, and a placeholder explaining the AI slot
       setCookNowResults([...matchedDishes, {
         name: "AI suggestions",
@@ -9606,7 +9656,7 @@ Only output the JSON. No markdown.`;
   // ── AI gate ──
   function withAI(cb) {
     if (!aiEnabled) { setAiGateModal("disabled"); return; }
-    if (!apiKey && !geminiKey) { setAiGateModal("no-key"); return; }
+    if (!aiKeyPresent) { setAiGateModal("no-key"); return; }
     cb();
   }
 
@@ -9891,11 +9941,14 @@ Only output the JSON. No markdown.`;
         style: { width:44,height:26,borderRadius:13,background:aiEnabled?(colorMode==="mono"?C.dim:C.accent):"rgba(255,255,255,0.12)",position:"relative",transition:"background 0.18s",flexShrink:0,cursor:"pointer" }
       }, /*#__PURE__*/React.createElement("div", { style: { position:"absolute",top:3,left:aiEnabled?21:3,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.18s",boxShadow:"0 1px 4px rgba(0,0,0,0.3)" } }))
     ),
-    aiEnabled && /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 18 } },
+    _isNative
+      ? (aiEnabled && /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, color: C.dim, lineHeight: 1.5 } }, "AI included \u2014 no setup needed."))
+      : [
+      aiEnabled && /*#__PURE__*/React.createElement("div", { key: "provider-tabs", style: { display: "flex", gap: 6, marginBottom: 18 } },
       /*#__PURE__*/React.createElement("button", { onClick: function(){ haptic("light"); setAiProviderTab("gemini"); }, style: Object.assign({}, pill(aiProviderTab === "gemini"), { flex: 1, padding: "7px 0", fontSize: 13 }) }, "Google Gemini"),
       /*#__PURE__*/React.createElement("button", { onClick: function(){ haptic("light"); setAiProviderTab("anthropic"); }, style: Object.assign({}, pill(aiProviderTab === "anthropic"), { flex: 1, padding: "7px 0", fontSize: 13 }) }, "Anthropic Claude")
     ),
-    aiEnabled && aiProviderTab === "gemini" && /*#__PURE__*/React.createElement("div", null,
+    aiEnabled && aiProviderTab === "gemini" && /*#__PURE__*/React.createElement("div", { key: "gemini-panel" },
       /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 } },
         /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: "#c97b2a" } }, "Free to use \u2014 limited to 15 requests per minute. If it fails, just wait a moment and try again."),
         /*#__PURE__*/React.createElement("button", { onClick: function(){ haptic("light"); setApiHelpModal("gemini"); }, style: { background: "none", border: "1px solid " + C.border2, color: C.dim, borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontFamily: C.font, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, "?")
@@ -9906,7 +9959,7 @@ Only output the JSON. No markdown.`;
       ),
       geminiKey && /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim, marginTop: 6 } }, "\u2713 Key saved")
     ),
-    aiEnabled && aiProviderTab === "anthropic" && /*#__PURE__*/React.createElement("div", null,
+    aiEnabled && aiProviderTab === "anthropic" && /*#__PURE__*/React.createElement("div", { key: "anthropic-panel" },
       /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 } },
         /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: C.dim } }, "Paid service \u2014 add credit at console.anthropic.com before use."),
         /*#__PURE__*/React.createElement("button", { onClick: function(){ haptic("light"); setApiHelpModal("anthropic"); }, style: { background: "none", border: "1px solid " + C.border2, color: C.dim, borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontFamily: C.font, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, "?")
@@ -9926,6 +9979,7 @@ Only output the JSON. No markdown.`;
         )
       )
     )
+      ]
   ), /*#__PURE__*/React.createElement("div", {
     style: { background: C.card, border: "1px solid " + C.border, borderRadius: 12, padding: "18px", marginBottom: 10, boxShadow: C.bg === "#f5f0ea" ? "0 1px 6px rgba(0,0,0,0.07)" : "none" }
   },
@@ -10378,13 +10432,13 @@ Only output the JSON. No markdown.`;
       color: C.white,
       letterSpacing: -0.5
     }
-  }, "$", apiCost.toFixed(4)), /*#__PURE__*/React.createElement("div", {
+  }, _isNative ? "Included" : "$" + apiCost.toFixed(4)), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: C.dim,
       marginTop: 2
     }
-  }, (geminiKey && !apiKey) ? "Gemini 2.0 Flash — $0.10 per million tokens in · $0.40 out" : "Claude Haiku 4.5 — $0.80 per million tokens in · $4.00 out")), /*#__PURE__*/React.createElement("button", {
+  }, _isNative ? "AI included with your Miso account — no cost to you" : ((geminiKey && !apiKey) ? "Gemini 2.0 Flash — $0.10 per million tokens in · $0.40 out" : "Claude Haiku 4.5 — $0.80 per million tokens in · $4.00 out"))), /*#__PURE__*/React.createElement("button", {
     onClick: () => { haptic("light"); setApiCost(0); },
     style: {
       background: "transparent",
@@ -11254,7 +11308,7 @@ Only output the JSON. No markdown.`;
     onClick: () => {
       haptic("light");
       if (!aiEnabled) { setAiGateModal("disabled"); return; }
-      if (!apiKey && !geminiKey) { setAiGateModal("no-key"); return; }
+      if (!aiKeyPresent) { setAiGateModal("no-key"); return; }
       setReceiptModal("choose");
     },
     style: {
@@ -12067,15 +12121,15 @@ Only output the JSON. No markdown.`;
     style: { display: "flex", gap: 8, marginBottom: 16 }
   },
     /*#__PURE__*/React.createElement("button", {
-      onClick: () => { haptic("light"); if (!aiEnabled) { setAiGateModal("disabled"); return; } if (!apiKey && !geminiKey) { setAiGateModal("no-key"); return; } document.getElementById("scan-camera-input").click(); },
+      onClick: () => { haptic("light"); if (!aiEnabled) { setAiGateModal("disabled"); return; } if (!aiKeyPresent) { setAiGateModal("no-key"); return; } document.getElementById("scan-camera-input").click(); },
       style: Object.assign({}, pill(false), { flex: 1, padding: "9px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer" })
     }, /*#__PURE__*/React.createElement(Icon, { name: "camera", size: 15 }), "Photo"),
     /*#__PURE__*/React.createElement("button", {
-      onClick: () => { haptic("light"); if (!aiEnabled) { setAiGateModal("disabled"); return; } if (!apiKey && !geminiKey) { setAiGateModal("no-key"); return; } document.getElementById("scan-gallery-input").click(); },
+      onClick: () => { haptic("light"); if (!aiEnabled) { setAiGateModal("disabled"); return; } if (!aiKeyPresent) { setAiGateModal("no-key"); return; } document.getElementById("scan-gallery-input").click(); },
       style: Object.assign({}, pill(false), { flex: 1, padding: "9px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer" })
     }, /*#__PURE__*/React.createElement(Icon, { name: "image", size: 15 }), "Gallery"),
     /*#__PURE__*/React.createElement("button", {
-      onClick: () => { haptic("light"); if (!aiEnabled) { setAiGateModal("disabled"); return; } if (!apiKey && !geminiKey) { setAiGateModal("no-key"); return; } setScanResult(null); setScanUrl(""); setScanModal("url"); },
+      onClick: () => { haptic("light"); if (!aiEnabled) { setAiGateModal("disabled"); return; } if (!aiKeyPresent) { setAiGateModal("no-key"); return; } setScanResult(null); setScanUrl(""); setScanModal("url"); },
       style: Object.assign({}, pill(false), { flex: 1, padding: "9px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer" })
     }, /*#__PURE__*/React.createElement(Icon, { name: "link", size: 15 }), "URL")
   ),

@@ -6,7 +6,8 @@
   "scripts": {
     "sync": "node -e \"require('fs').copyFileSync('index.html','www/index.html')\" && npx cap sync",
     "android": "node -e \"require('fs').copyFileSync('index.html','www/index.html')\" && npx cap sync && npx cap open android",
-    "ios": "node -e \"require('fs').copyFileSync('index.html','www/index.html')\" && npx cap sync && npx cap open ios"
+    "ios": "node -e \"require('fs').copyFileSync('index.html','www/index.html')\" && npx cap sync && npx cap open ios",
+    "functions:deploy": "firebase deploy --only functions,firestore:rules"
   },
   "repository": {
     "type": "git",
@@ -21,6 +22,7 @@
   },
   "homepage": "https://github.com/i-am-wolley/Pantry-OS-App#readme",
   "dependencies": {
+    "@capacitor-firebase/app-check": "^8.3.0",
     "@capacitor-firebase/authentication": "^8.3.0",
     "@capacitor/android": "^8.4.0",
     "@capacitor/cli": "^8.4.0",
