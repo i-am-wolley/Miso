@@ -8194,13 +8194,17 @@ function App() {
 
 
       // Fill non-AI slots; unfillable inventory slots → AI fallback
+      // (overrides.aiSlotSel lets callers like the Saturday auto-scheduler pass the
+      // selection directly instead of relying on aiSlotSel state, which is only ever
+      // populated by the manual "Generate Menu" popup and would otherwise be stale/empty)
+      var _aiSlotSel=(overrides&&overrides.aiSlotSel)?overrides.aiSlotSel:aiSlotSel;
       var aiSlotsNeeded=[];
       var aiFallbackSlots=[];
       remainingDays.forEach(function(d){
         mealCats.forEach(function(mc){
           if(plan[d][mc]!==null) return;
           var key=d+"|"+mc;
-          if(aiSlotSel&&aiSlotSel[key]){
+          if(_aiSlotSel&&_aiSlotSel[key]){
             aiSlotsNeeded.push({day:d,mc:mc,isUserAI:true});
           } else {
             var picked=pickFromInventory(d,mc);
@@ -9087,7 +9091,10 @@ Only output the JSON. No markdown.`;
           // NOTE: stamp is set inside generateMenu on success (line ~7826) so Firestore
           // only receives the key after generation actually completes. The ref prevents
           // the 60s interval from double-firing while the async call is in-flight.
-          Promise.resolve(generateMenu({genMode: "mixed", ignoreStock: true, triggeredBy: "_miso"}))
+          // aiSlotSel is passed explicitly (not via state) because it's normally only
+          // populated by the manual "Generate Menu" popup — without this the auto-gen
+          // path would ignore the user's Default AI Days setting entirely.
+          Promise.resolve(generateMenu({genMode: "mixed", ignoreStock: true, triggeredBy: "_miso", aiSlotSel: defaultAiSlots}))
             .finally(function(){ autoGenInFlightRef.current = false; });
         }
       }
@@ -13899,7 +13906,7 @@ Only output the JSON. No markdown.`;
                   var rowType = receiptEditRow.type;
                   var filtered = items.filter(function(it){
                     return it.name.toLowerCase().includes((receiptEditSearch || "").toLowerCase());
-                  });
+                  }).sort(function(a, b){ return a.name.localeCompare(b.name); });
                   if (filtered.length === 0) return /*#__PURE__*/React.createElement("div", { style: { padding: "20px 0", textAlign: "center", color: C.dim, fontSize: 13 } }, "No pantry items found");
                   return filtered.map(function(it){
                     var iCat = PANTRY_CATEGORIES.find(function(c){ return c.id === it.cat; });
