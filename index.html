@@ -3379,6 +3379,7 @@ const SK_LOCAL = {
   notifications:    "pantryos-notifications",
   greetingName:     "pantryos-greetingname",
   celebratedStreak: "pantryos-celebratedstreak",
+  confirmedWeekKey: "pantryos-confirmedweekkey",
 };
 const SK = { ...SK_SYNC, ...SK_LOCAL };
 const _syncKeySet = new Set(Object.values(SK_SYNC));
@@ -7186,6 +7187,28 @@ function App() {
           setNextMenu(parsedNm);
         }
       }
+      // Self-healing guard: confirmedDays/lockedDays are keyed by weekday *name*
+      // (e.g. "Sunday"), not by date, so they must be wiped whenever the current
+      // week's plan changes — otherwise stale entries from last week's "Sunday"
+      // silently mask this week's "Sunday" (this is what caused the shopping list
+      // to show "fully stocked" while day cards still showed missing items).
+      // Comparing weekKeys here catches every rollover path, including ones that
+      // forgot to clear it, and repairs already-stale data on the very next load.
+      try {
+        var finalMenuWeekKey = (snm && parsedNm && todayIsNotSaturday)
+          ? parsedNm.weekKey
+          : (sm ? JSON.parse(sm).weekKey : null);
+        if (finalMenuWeekKey) {
+          var lastConfirmedWeekKey = storage.get(SK.confirmedWeekKey);
+          if (lastConfirmedWeekKey !== finalMenuWeekKey) {
+            setConfirmedDays({});
+            storage.remove(SK.confirmedDays);
+            setLockedDays({});
+            storage.remove(SK.lockedDays);
+          }
+          storage.set(SK.confirmedWeekKey, finalMenuWeekKey);
+        }
+      } catch(e) {}
       const sc = storage.get(SK.mealCats);
       if (sc) setMealCats(JSON.parse(sc));
       const sq = storage.get(SK.sqSize);
