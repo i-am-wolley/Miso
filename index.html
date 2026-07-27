@@ -8060,9 +8060,10 @@ function App() {
         }
 
         // ── 2. MUST-INCLUDE with mutual-exclusion cluster awareness ──
-        // Skipped in ignore-stock mode — auto-gen uses ignoreStock:true override so must-include
-        // is suppressed there, but manual Saturday generation respects the user's own setting.
-        if(!_ignoreStock){
+        // Always runs in mixed mode (auto-gen, Stocked-only, and Any-pantry alike) —
+        // the ingredient-in-stock check below is the real gate, independent of _ignoreStock.
+        // isFullyStocked() still self-relaxes to true under ignoreStock, same as everywhere else.
+        {
         // Step A: collect ALL eligible must-include candidates
         var mustCandidates=dishesForGen.filter(function(d){
           if(!d.mustInclude) return false;
@@ -8139,7 +8140,7 @@ function App() {
           }
         }
 
-        } // end if(!ignoreStock) for must-include
+        } // end must-include block
 
         // ── 3. NORMAL eligible pool (timesPerWeek=0 dishes only, max 1 each) ──
         var eligible=dishesForGen.filter(function(d){
