@@ -9559,9 +9559,14 @@ Only output the JSON. No markdown.`;
     if (confirmedDays[dayName]) return; // already confirmed
     var dayPlan = activeMenu.plan[dayName];
     var dishNameSet = new Set(dishes.map(function(d) { return d.name; }));
+    var dayValues = Object.values(dayPlan);
     var updated = dishes.map(function(d) {
-      if (Object.values(dayPlan).includes(d.name) && dishNameSet.has(d.name)) {
-        return Object.assign({}, d, {suggestedCount: (d.suggestedCount || 0) + 1});
+      if (!dishNameSet.has(d.name)) return d;
+      // Count every slot the dish occupies today, not just whether it appears —
+      // a dish in both Lunch and Dinner should count as 2 uses, not 1.
+      var occ = dayValues.filter(function(n) { return n === d.name; }).length;
+      if (occ > 0) {
+        return Object.assign({}, d, {suggestedCount: (d.suggestedCount || 0) + occ});
       }
       return d;
     });
@@ -10743,15 +10748,18 @@ Only output the JSON. No markdown.`;
   ),
   (() => {
     var activeMenuForShopping = nextMenu || menu;
-    // Occurrences, not a deduped set — the same dish scheduled on two different days needs its
-    // ingredients twice (e.g. Arabic Bread for both Friday and Saturday breakfast), so each
-    // day+meal slot is tracked separately rather than collapsing repeats into one dish name.
+    // Occurrences, not a deduped set — the same dish scheduled on two different days (or twice
+    // in the same day, e.g. Lunch and Dinner) needs its ingredients each time, so day+meal slot
+    // is tracked separately rather than collapsing repeats into one dish name.
     var menuOccurrences = [];
     Object.entries(activeMenuForShopping.plan).forEach(function(entry){
       var dayName=entry[0], dayPlan=entry[1];
       if(!dayPlan||typeof dayPlan!=="object") return;
       if(activeMenuForShopping===menu && confirmedDays && confirmedDays[dayName]) return;
-      Object.values(dayPlan).forEach(function(n){if(n&&n!=="🍽 Dine Out")menuOccurrences.push({day:dayName, dishName:n});});
+      Object.entries(dayPlan).forEach(function(slotEntry){
+        var mealCat=slotEntry[0], n=slotEntry[1];
+        if(n&&n!=="🍽 Dine Out")menuOccurrences.push({day:dayName, mealCat:mealCat, dishName:n});
+      });
     });
     var STAPLE = new Set(["oil","cooking oil","salt","water","sugar","black pepper","ghee","butter"]);
     // For AI dishes: fuzzy fallback in case Claude drifts from exact pantry names
@@ -10807,7 +10815,7 @@ Only output the JSON. No markdown.`;
         if(!inStock){
           var label = pantryItem.name;
           if(!missingMap[label]) missingMap[label]={dishes:[],isAI:isAI,itemId:pantryItem.id};
-          missingMap[label].dishes.push(occ.day+": "+dishName);
+          missingMap[label].dishes.push(occ.day+" ("+occ.mealCat+"): "+dishName);
         }
       });
     });
