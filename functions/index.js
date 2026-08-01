@@ -10,7 +10,7 @@ initializeApp();
 const db = getFirestore();
 
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
-const GEMINI_MODEL = "gemini-2.5-flash-lite";
+const GEMINI_MODEL = "gemini-3.1-flash-lite";
 const DAILY_QUOTA_PER_HOUSEHOLD = 300;
 // Phase 7: App Check verification runs in log-only mode until real native traffic
 // has been observed passing in the Firebase console, then this flips to true.
