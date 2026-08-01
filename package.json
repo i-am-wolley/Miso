@@ -31,5 +31,8 @@
     "@capacitor/ios": "^8.4.0",
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/status-bar": "^8.0.2"
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.24.0"
   }
 }
