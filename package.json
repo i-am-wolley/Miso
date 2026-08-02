@@ -7,7 +7,8 @@
     "sync": "node -e \"require('fs').copyFileSync('index.html','www/index.html')\" && npx cap sync",
     "android": "node -e \"require('fs').copyFileSync('index.html','www/index.html')\" && npx cap sync && npx cap open android",
     "ios": "node -e \"require('fs').copyFileSync('index.html','www/index.html')\" && npx cap sync && npx cap open ios",
-    "functions:deploy": "firebase deploy --only functions,firestore:rules"
+    "functions:deploy": "firebase deploy --only functions,firestore:rules",
+    "ai-usage-report": "node scripts/ai-usage-report.js"
   },
   "repository": {
     "type": "git",
@@ -33,6 +34,7 @@
     "@capacitor/status-bar": "^8.0.2"
   },
   "devDependencies": {
+    "firebase-admin": "^13.10.0",
     "firebase-tools": "^15.24.0"
   }
 }
