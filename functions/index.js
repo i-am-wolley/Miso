@@ -15,9 +15,9 @@ const GEMINI_MODEL = "gemini-3.1-flash-lite";
 const PRICE_PER_INPUT_TOKEN_USD = 0.25 / 1e6;
 const PRICE_PER_OUTPUT_TOKEN_USD = 1.50 / 1e6;
 const DAILY_QUOTA_PER_HOUSEHOLD = 50;
-// Phase 7: App Check verification runs in log-only mode until real native traffic
-// has been observed passing in the Firebase console, then this flips to true.
-const ENFORCE_APP_CHECK = false;
+// Phase 7: flipped true 2026-08-02 after confirming verified App Check tokens
+// from the native app in the Firebase console (native smoke test passed).
+const ENFORCE_APP_CHECK = true;
 
 function repairAndParse(str) {
   if (!str) return null;
