@@ -1412,6 +1412,19 @@ function Icon({
       /*#__PURE__*/React.createElement("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }),
       /*#__PURE__*/React.createElement("polyline", { points: "17 8 12 3 7 8" }),
       /*#__PURE__*/React.createElement("line", { x1: "12", y1: "3", x2: "12", y2: "15" })));
+  if (name === "dineOut") return /*#__PURE__*/React.createElement("span", { style: wrap },
+    /*#__PURE__*/React.createElement("svg", { viewBox: "0 0 24 24", width: w, height: h, fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeWidth, strokeLinecap: p.strokeLinecap, strokeLinejoin: p.strokeLinejoin },
+      /*#__PURE__*/React.createElement("path", { d: "M6 2v6a3 3 0 0 0 6 0V2" }),
+      /*#__PURE__*/React.createElement("path", { d: "M9 8v14" }),
+      /*#__PURE__*/React.createElement("path", { d: "M18 2c0 4-3 6-3 10v10" })));
+  if (name === "sun") return /*#__PURE__*/React.createElement("span", { style: wrap },
+    /*#__PURE__*/React.createElement("svg", { viewBox: "0 0 24 24", width: w, height: h, fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeWidth, strokeLinecap: p.strokeLinecap, strokeLinejoin: p.strokeLinejoin },
+      /*#__PURE__*/React.createElement("circle", { cx: "12", cy: "12", r: "4" }),
+      /*#__PURE__*/React.createElement("path", { d: "M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" })));
+  if (name === "ban") return /*#__PURE__*/React.createElement("span", { style: wrap },
+    /*#__PURE__*/React.createElement("svg", { viewBox: "0 0 24 24", width: w, height: h, fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeWidth, strokeLinecap: p.strokeLinecap, strokeLinejoin: p.strokeLinejoin },
+      /*#__PURE__*/React.createElement("circle", { cx: "12", cy: "12", r: "9" }),
+      /*#__PURE__*/React.createElement("path", { d: "M5.5 5.5l13 13" })));
   return null;
 }
 const PANTRY_CATEGORIES = [{
@@ -3332,11 +3345,11 @@ function filterToPantryIngredients(raw, items) {
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const WEEKEND = ["Saturday", "Sunday"];
 // Non-dish meal-slot placeholders selectable from the swap modal. Dine Out keeps its existing
-// "penalize the streak" treatment; Home Cooked / Skipped are both counted as whole-food.
+// "penalize the streak" treatment; Vacation Mode / Skipped are both counted as whole-food.
 const MEAL_DINE_OUT = "🍽 Dine Out";
-const MEAL_HOME_COOKED = "🍳 Home Cooked";
+const MEAL_VACATION_MODE = "☀️ Vacation Mode";
 const MEAL_SKIPPED = "🚫 Skipped";
-const NON_DISH_MEALS = new Set([MEAL_DINE_OUT, MEAL_HOME_COOKED, MEAL_SKIPPED]);
+const NON_DISH_MEALS = new Set([MEAL_DINE_OUT, MEAL_VACATION_MODE, MEAL_SKIPPED]);
 function isNonDishMeal(name) { return NON_DISH_MEALS.has(name); }
 // Keys written to cloud storage (Firestore) when user is logged in
 const SK_SYNC = {
@@ -7986,6 +7999,7 @@ function App() {
         "You are a creative chef. Output ONLY valid JSON, no markdown, no preamble.\n"+
         "PLACEHOLDERS: AI_DISH=creative dish from pantry, SNACK=simple creative snack max 20min from pantry,\n"+
         "MICHELIN_LUNCH/MICHELIN_DINNER=Gourmet quality dish from pantry.\n"+
+        "Replace each placeholder key's value with ONLY the dish name — never output the placeholder word itself (e.g. write \"Prawn Moilee\", not \"MICHELIN_LUNCH: Prawn Moilee\").\n"+
         "Use ONLY pantry ingredients listed. Staples: oil,salt,water,sugar,black pepper always available.\n"+
         "Every day needs fruit and vegetable. Respect meal slot appropriateness.\n"+
         "Dish names must be 30 characters or fewer (including spaces).\n"+
@@ -8265,6 +8279,7 @@ function App() {
           "You are a creative chef. Output ONLY valid JSON, no markdown, no preamble.\n"+
           "Fill each key (DAY___MEALCATEGORY format) with a creative dish name.\n"+
           "AI_DISH=creative dish, SNACK=simple max 20min snack, MICHELIN_*=Gourmet quality.\n"+
+          "Each value must be ONLY the dish name — never output the placeholder word itself (e.g. write \"Prawn Moilee\", not \"MICHELIN_LUNCH: Prawn Moilee\").\n"+
           (hasFallback?"PANTRY_FALLBACK slots: use ONLY the exact ingredients listed. Zero creativity outside pantry.\n":"")+
           "Use ONLY pantry ingredients listed below. Staples (oil,salt,water,sugar,pepper) always available.\n"+
           "Dish names must be 30 characters or fewer (including spaces).\n"+
@@ -8283,7 +8298,7 @@ function App() {
           aiSlotsNeeded.forEach(function(s){
             var k=s.day+"___"+s.mc;
             if(aiResult&&aiResult[k]&&typeof aiResult[k]==="string"&&aiResult[k]){
-              plan[s.day][s.mc]=aiResult[k];
+              plan[s.day][s.mc]=stripPlaceholderPrefix(aiResult[k]);
             } else {
               plan[s.day][s.mc]=pickFromInventory(s.day,s.mc); // fallback
             }
@@ -8410,6 +8425,12 @@ function App() {
     setAiLoading(false);
   }
 
+  // Safety net for AI_DISH/SNACK/MICHELIN_LUNCH/MICHELIN_DINNER/PANTRY_FALLBACK placeholder
+  // tokens the prompt asks the AI not to echo — strips a leading "TOKEN: " if one slips through.
+  function stripPlaceholderPrefix(v){
+    return typeof v==="string" ? v.replace(/^(AI_DISH|SNACK|MICHELIN_LUNCH|MICHELIN_DINNER|PANTRY_FALLBACK)\s*[:\-—]\s*/i,"").trim() : v;
+  }
+
   // ── Shared: stream API call, merge into plan by day key ──
   async function runStream(systemPrompt,userMsg,plan,remainingDays){
     var raw=(await callAI({system:systemPrompt,prompt:userMsg,maxTokens:4000,stream:true})).json;
@@ -8422,7 +8443,7 @@ function App() {
         Object.keys(raw[d]).forEach(function(mc){
           if(plan[d]&&plan[d][mc]===null){
             var v=raw[d][mc];
-            plan[d][mc]=(typeof v==="string"?v:"");
+            plan[d][mc]=stripPlaceholderPrefix(typeof v==="string"?v:"");
           }
         });
       }
@@ -9533,7 +9554,7 @@ Only output the JSON. No markdown.`;
         slots[mealCat] = { color: "heavy", isDineOut: true };
         return;
       }
-      if (dishName === MEAL_HOME_COOKED || dishName === MEAL_SKIPPED) {
+      if (dishName === MEAL_VACATION_MODE || dishName === MEAL_SKIPPED) {
         slots[mealCat] = { color: "whole", isDineOut: false, isPlaceholder: true, processedCount: 0 };
         return;
       }
@@ -13100,22 +13121,22 @@ Only output the JSON. No markdown.`;
           logActivity("dish_swapped", swapModal.day+" "+swapModal.mealCat+": "+swapModal.current+" → Dine Out");
           setSwapModal(null); setSwapError("");
         },
-        style:{...pill(false),width:"100%",padding:"10px 0",fontSize:13,textAlign:"left",paddingLeft:12}
-      },"🍽 Dine Out"),
-      // HOME COOKED / SKIPPED — both count as whole-food in the metrics, unlike Dine Out
+        style:{...pill(false),width:"100%",padding:"10px 12px",fontSize:13,display:"flex",alignItems:"center",gap:8}
+      }, /*#__PURE__*/React.createElement(Icon,{name:"dineOut",size:16}), "Dine Out"),
+      // VACATION MODE / SKIPPED — both count as whole-food in the metrics, unlike Dine Out
       /*#__PURE__*/React.createElement("div",{style:{display:"flex",gap:8}},
         /*#__PURE__*/React.createElement("button",{
           onClick:function(){
             haptic("medium");
             _setSwapTarget(function(prev){
               return Object.assign({},prev,{plan:Object.assign({},prev.plan,
-                {[swapModal.day]:Object.assign({},prev.plan[swapModal.day],{[swapModal.mealCat]:MEAL_HOME_COOKED})})});
+                {[swapModal.day]:Object.assign({},prev.plan[swapModal.day],{[swapModal.mealCat]:MEAL_VACATION_MODE})})});
             });
-            logActivity("dish_swapped", swapModal.day+" "+swapModal.mealCat+": "+swapModal.current+" → Home Cooked");
+            logActivity("dish_swapped", swapModal.day+" "+swapModal.mealCat+": "+swapModal.current+" → Vacation Mode");
             setSwapModal(null); setSwapError("");
           },
-          style:{...pill(false),flex:1,padding:"10px 0",fontSize:13}
-        },"🍳 Home Cooked"),
+          style:{...pill(false),flex:1,padding:"10px 0",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6}
+        }, /*#__PURE__*/React.createElement(Icon,{name:"sun",size:16}), "Vacation Mode"),
         /*#__PURE__*/React.createElement("button",{
           onClick:function(){
             haptic("medium");
@@ -13126,8 +13147,8 @@ Only output the JSON. No markdown.`;
             logActivity("dish_swapped", swapModal.day+" "+swapModal.mealCat+": "+swapModal.current+" → Skipped");
             setSwapModal(null); setSwapError("");
           },
-          style:{...pill(false),flex:1,padding:"10px 0",fontSize:13}
-        },"🚫 Skipped")
+          style:{...pill(false),flex:1,padding:"10px 0",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6}
+        }, /*#__PURE__*/React.createElement(Icon,{name:"ban",size:16}), "Skipped")
       ),
       // AI option
       /*#__PURE__*/React.createElement("button",{
