@@ -3351,6 +3351,12 @@ const MEAL_VACATION_MODE = "☀️ Vacation Mode";
 const MEAL_SKIPPED = "🚫 Skipped";
 const NON_DISH_MEALS = new Set([MEAL_DINE_OUT, MEAL_VACATION_MODE, MEAL_SKIPPED]);
 function isNonDishMeal(name) { return NON_DISH_MEALS.has(name); }
+function placeholderMealIcon(name) {
+  if (name === MEAL_DINE_OUT) return "dineOut";
+  if (name === MEAL_VACATION_MODE) return "sun";
+  if (name === MEAL_SKIPPED) return "ban";
+  return null;
+}
 // Keys written to cloud storage (Firestore) when user is logged in
 const SK_SYNC = {
   items:           "pantryos-items",
@@ -6305,6 +6311,7 @@ function DayCard({
         const hasRecipe = (recipes && recipes[dishName]) || !!STATIC_RECIPES[dishName];
         const isLast = idx === mealCats.filter(m => dayMenu[m] && typeof dayMenu[m] === "string").length - 1;
         const meta = mealCatMeta(mc, colorMode, C);
+        const placeholderIcon = isPlaceholderMeal ? placeholderMealIcon(dishName) : null;
         return /*#__PURE__*/React.createElement("div", {
           key: mc,
           style: {
@@ -6320,7 +6327,7 @@ function DayCard({
               display: "flex", alignItems: "center", justifyContent: "center",
               background: colorMode === "mono" ? (isLight ? "#f2ede8" : C.dim3) : tint(meta.color, isLight ? 0.14 : 0.16)
             }
-          }, /*#__PURE__*/React.createElement(Icon, { name: meta.icon, size: 18, style: { color: meta.color } })),
+          }, /*#__PURE__*/React.createElement(Icon, { name: placeholderIcon || meta.icon, size: 18, style: { color: meta.color } })),
           // Category + dish name
           /*#__PURE__*/React.createElement("div", { style: { flex: 1, minWidth: 0 } },
             /*#__PURE__*/React.createElement("div", {
@@ -8297,8 +8304,9 @@ function App() {
           var aiResult=(await callAI({system:sysMix,prompt:msgMix,maxTokens:4000,stream:true})).json;
           aiSlotsNeeded.forEach(function(s){
             var k=s.day+"___"+s.mc;
-            if(aiResult&&aiResult[k]&&typeof aiResult[k]==="string"&&aiResult[k]){
-              plan[s.day][s.mc]=stripPlaceholderPrefix(aiResult[k]);
+            var stripped=aiResult&&aiResult[k]?stripPlaceholderPrefix(aiResult[k]):"";
+            if(stripped){
+              plan[s.day][s.mc]=stripped;
             } else {
               plan[s.day][s.mc]=pickFromInventory(s.day,s.mc); // fallback
             }
@@ -8426,9 +8434,15 @@ function App() {
   }
 
   // Safety net for AI_DISH/SNACK/MICHELIN_LUNCH/MICHELIN_DINNER/PANTRY_FALLBACK placeholder
-  // tokens the prompt asks the AI not to echo — strips a leading "TOKEN: " if one slips through.
+  // tokens the prompt asks the AI not to echo. Strips a leading "TOKEN: " if one slips through,
+  // and returns "" if the AI returned nothing but the bare token itself (no dish name at all) —
+  // callers must treat "" as a failed slot and fall back, not store it as a real dish name.
+  var PLACEHOLDER_TOKEN_RE = /^(AI_DISH|SNACK|MICHELIN_LUNCH|MICHELIN_DINNER|PANTRY_FALLBACK)$/i;
   function stripPlaceholderPrefix(v){
-    return typeof v==="string" ? v.replace(/^(AI_DISH|SNACK|MICHELIN_LUNCH|MICHELIN_DINNER|PANTRY_FALLBACK)\s*[:\-—]\s*/i,"").trim() : v;
+    if(typeof v!=="string") return "";
+    var s=v.trim();
+    if(PLACEHOLDER_TOKEN_RE.test(s)) return "";
+    return s.replace(/^(AI_DISH|SNACK|MICHELIN_LUNCH|MICHELIN_DINNER|PANTRY_FALLBACK)\s*[:\-—]\s*/i,"").trim();
   }
 
   // ── Shared: stream API call, merge into plan by day key ──
@@ -8442,8 +8456,8 @@ function App() {
       if(raw[d]&&typeof raw[d]==="object"){
         Object.keys(raw[d]).forEach(function(mc){
           if(plan[d]&&plan[d][mc]===null){
-            var v=raw[d][mc];
-            plan[d][mc]=stripPlaceholderPrefix(typeof v==="string"?v:"");
+            var stripped=stripPlaceholderPrefix(raw[d][mc]);
+            if(stripped) plan[d][mc]=stripped; // else leave null — shared fallback pass fills it
           }
         });
       }
