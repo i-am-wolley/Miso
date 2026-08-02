@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "557298985239-aokumsf3i6ada5g4ekvnom4qsvanb5rv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "app.pantryos",
+            "certificate_hash": "668a970e16bdf702aefaa9137852f981b1501aa1"
+          }
+        },
+        {
           "client_id": "557298985239-leraf3gfj3aqsjf0b2rtp8b3dcu4cqmn.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
