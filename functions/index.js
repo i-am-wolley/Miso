@@ -70,6 +70,48 @@ async function verifyAuth(req) {
   }
 }
 
+// Security-review followup: this endpoint used to trust body.system/body.prompt completely,
+// making it a free general-purpose Gemini proxy for anyone with a valid token. Real prompts
+// from the app are always built from a small, fixed set of instruction openers (the rest —
+// dish names, pantry contents, dietary flags — varies per request and gets appended after).
+// Reject anything that doesn't start with one of them, before it burns quota or hits Gemini.
+// Keep this in sync with every system/prompt literal in index.html's AI call sites.
+const ALLOWED_PROMPT_PREFIXES = [
+  "You are a culinary assistant. Output ONLY valid JSON with numeric IDs.", // ingredient resolution
+  "You are a culinary assistant. Identify the dish from the image or URL provided", // dish scan (photo/URL)
+  "You are a creative chef. Output ONLY valid JSON, no markdown, no preamble.", // weekly/mixed auto-gen
+  "You are a creative chef. Suggest exactly", // "what can I cook now"
+  "You are a Gourmet chef and meal planner. Suggest ONE single replacement dish.", // swap suggestion
+  "Write a recipe for: ", // recipe fetch
+  "Analyse this 7-day meal plan. For each day estimate:", // nutrition check
+  "You are a grocery receipt scanner. Extract ALL food and household product names" // receipt scan
+];
+const MAX_PROMPT_LENGTH = 20000;
+const MAX_MAX_TOKENS = 4000;
+const MAX_IMAGES = 5;
+
+function validateContent(body) {
+  var system = body.system;
+  var prompt = body.prompt;
+  var textToCheck = system || prompt;
+  if (!textToCheck || typeof textToCheck !== "string") {
+    throw { status: 400, message: "Missing prompt" };
+  }
+  if (typeof system === "string" && system.length > MAX_PROMPT_LENGTH) {
+    throw { status: 400, message: "Request too large" };
+  }
+  if (typeof prompt === "string" && prompt.length > MAX_PROMPT_LENGTH) {
+    throw { status: 400, message: "Request too large" };
+  }
+  var recognized = ALLOWED_PROMPT_PREFIXES.some(function (p) { return textToCheck.indexOf(p) === 0; });
+  if (!recognized) {
+    throw { status: 400, message: "Unrecognized request" };
+  }
+  if (body.images && (!Array.isArray(body.images) || body.images.length > MAX_IMAGES)) {
+    throw { status: 400, message: "Too many images" };
+  }
+}
+
 async function verifyHouseholdMember(householdCode, uid) {
   if (!householdCode) throw { status: 400, message: "Missing householdCode" };
   var hhDoc = await db.collection("households").doc(householdCode).get();
@@ -156,13 +198,14 @@ exports.generateAiContent = onRequest(
       var uid = await verifyAuth(req);
       var body = req.body || {};
       var householdCode = body.householdCode;
+      validateContent(body);
       await verifyHouseholdMember(householdCode, uid);
       await checkAndIncrementQuota(householdCode);
 
       var result = await callGemini(GEMINI_API_KEY.value(), {
         system: body.system,
         prompt: body.prompt,
-        maxTokens: body.maxTokens,
+        maxTokens: Math.min(body.maxTokens || 2000, MAX_MAX_TOKENS),
         images: body.images
       });
       await recordUsage(householdCode, result.inputTokens, result.outputTokens);
