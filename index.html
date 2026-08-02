@@ -3331,6 +3331,13 @@ function filterToPantryIngredients(raw, items) {
 }
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const WEEKEND = ["Saturday", "Sunday"];
+// Non-dish meal-slot placeholders selectable from the swap modal. Dine Out keeps its existing
+// "penalize the streak" treatment; Home Cooked / Skipped are both counted as whole-food.
+const MEAL_DINE_OUT = "🍽 Dine Out";
+const MEAL_HOME_COOKED = "🍳 Home Cooked";
+const MEAL_SKIPPED = "🚫 Skipped";
+const NON_DISH_MEALS = new Set([MEAL_DINE_OUT, MEAL_HOME_COOKED, MEAL_SKIPPED]);
+function isNonDishMeal(name) { return NON_DISH_MEALS.has(name); }
 // Keys written to cloud storage (Firestore) when user is logged in
 const SK_SYNC = {
   items:           "pantryos-items",
@@ -6174,7 +6181,7 @@ function computeDayPantryStatus(dayMenu, dishes, items, stock, aiDishIngredients
   var total = 0, inStock = 0;
   var missing = [];
   Object.values(dayMenu || {}).forEach(function(dishName){
-    if (!dishName || dishName.indexOf("Dine Out") >= 0) return;
+    if (!dishName || isNonDishMeal(dishName)) return;
     var dish = dishes.find(function(d){ return d.name === dishName; });
     var isAI = !dish;
     var rawIngs = dish ? (dish.ingredients||[]) : (aiDishIngredients[dishName]||[]);
@@ -6279,8 +6286,8 @@ function DayCard({
       mealCats.map((mc, idx) => {
         if (!dayMenu[mc] || typeof dayMenu[mc] !== "string") return null;
         const dishName = dayMenu[mc];
-        const isDineOut = dishName && dishName.indexOf("Dine Out") >= 0;
-        const isAI = !isDineOut && isAiDish(dishName);
+        const isPlaceholderMeal = dishName && isNonDishMeal(dishName);
+        const isAI = !isPlaceholderMeal && isAiDish(dishName);
         const alreadySaved = onSaveDish && onSaveDish.saved && onSaveDish.saved(dishName);
         const hasRecipe = (recipes && recipes[dishName]) || !!STATIC_RECIPES[dishName];
         const isLast = idx === mealCats.filter(m => dayMenu[m] && typeof dayMenu[m] === "string").length - 1;
@@ -7491,7 +7498,7 @@ function App() {
     Object.values(activeM.plan).forEach(function(dp){
       if(!dp||typeof dp!=="object") return;
       Object.values(dp).forEach(function(name){
-        if(name && name!=="🍽 Dine Out" && !dishNameSet.has(name) && !(name in aiDishIngredients))
+        if(name && !isNonDishMeal(name) && !dishNameSet.has(name) && !(name in aiDishIngredients))
           toFetch.push(name);
       });
     });
@@ -7878,7 +7885,7 @@ function App() {
   }
 
   // Items to show in summary based on filter
-  const summaryItems = summaryFilter === "stocked" ? stockedItems : summaryFilter === "needed" ? neededItems : items;
+  const summaryItems = summaryFilter === "stocked" ? stockedItems : summaryFilter === "needed" ? neededItems : summaryFilter === "processed" ? items.filter(i => i.isProcessed) : items;
 
   // Pantry groups (all items, no availability filter – pantry is just a list manager now)
   const pantryGroups = PANTRY_CATEGORIES.map(pc => ({
@@ -9526,6 +9533,10 @@ Only output the JSON. No markdown.`;
         slots[mealCat] = { color: "heavy", isDineOut: true };
         return;
       }
+      if (dishName === MEAL_HOME_COOKED || dishName === MEAL_SKIPPED) {
+        slots[mealCat] = { color: "whole", isDineOut: false, isPlaceholder: true, processedCount: 0 };
+        return;
+      }
       var slotProcessedIds = resolveProcessedIds(dishName);
       slotProcessedIds.forEach(function(id){ processedIds.add(id); });
       var slotColor = slotProcessedIds.size === 0 ? "whole" : slotProcessedIds.size === 1 ? "mostly" : "leaning";
@@ -10620,7 +10631,7 @@ Only output the JSON. No markdown.`;
     function getPrepEntries(dayName, useNextMenu) {
       var activeMenu = (useNextMenu && nextMenu) ? nextMenu : menu;
       if (!activeMenu || !activeMenu.plan || !activeMenu.plan[dayName]) return [];
-      var dayDishes = Object.values(activeMenu.plan[dayName]).filter(function(n){ return n && n !== "🍽 Dine Out"; });
+      var dayDishes = Object.values(activeMenu.plan[dayName]).filter(function(n){ return n && !isNonDishMeal(n); });
       var seen = new Set();
       var entries = [];
       dayDishes.forEach(function(dishName) {
@@ -10685,7 +10696,7 @@ Only output the JSON. No markdown.`;
             var dn2=entry2[0], dp=entry2[1];
             if(!dp||typeof dp!=="object") return;
             if(activeMenu2===menu && confirmedDays && confirmedDays[dn2]) return;
-            Object.values(dp).forEach(function(n){if(n&&n!=="🍽 Dine Out")menuDishNames2.add(n);});
+            Object.values(dp).forEach(function(n){if(n&&!isNonDishMeal(n))menuDishNames2.add(n);});
           });
           // Build same pantry lookup as shopping list
           function normIng2(s){return s.toLowerCase().trim().replace(/s$/,"");}
@@ -10758,7 +10769,7 @@ Only output the JSON. No markdown.`;
       if(activeMenuForShopping===menu && confirmedDays && confirmedDays[dayName]) return;
       Object.entries(dayPlan).forEach(function(slotEntry){
         var mealCat=slotEntry[0], n=slotEntry[1];
-        if(n&&n!=="🍽 Dine Out")menuOccurrences.push({day:dayName, mealCat:mealCat, dishName:n});
+        if(n&&!isNonDishMeal(n))menuOccurrences.push({day:dayName, mealCat:mealCat, dishName:n});
       });
     });
     var STAPLE = new Set(["oil","cooking oil","salt","water","sugar","black pepper","ghee","butter"]);
@@ -11186,7 +11197,7 @@ Only output the JSON. No markdown.`;
     Object.values(aMP).forEach(function(dp){
       if(!dp||typeof dp!=="object") return;
       Object.values(dp).forEach(function(dn){
-        if(!dn||dn==="🍽 Dine Out") return; fS2++;
+        if(!dn||isNonDishMeal(dn)) return; fS2++;
         dNC[dn]=(dNC[dn]||0)+1;
         var d=dishes.find(function(x){return x.name===dn;});
         var rI=d?(d.ingredients||[]):(aiDishIngredients[dn]||[]);
@@ -11206,7 +11217,7 @@ Only output the JSON. No markdown.`;
     Object.values(aMP).forEach(function(dp){
       if(!dp||typeof dp!=="object") return;
       Object.values(dp).forEach(function(dn){
-        if(!dn||dn==="🍽 Dine Out") return;
+        if(!dn||isNonDishMeal(dn)) return;
         var d=dishes.find(function(x){return x.name===dn;});
         var rI=d?(d.ingredients||[]):(aiDishIngredients[dn]||[]);
         rI.forEach(function(ing){
@@ -11233,7 +11244,8 @@ Only output the JSON. No markdown.`;
     var vL=vLosses.join(" · ");
     var mets=[
       {l:stockedItems.length+"",sub:"Stocked",f:"stocked",bg:"stocked"},
-      {l:neededItems.length+"",sub:"Out of stock",f:"needed",bg:"needed"}
+      {l:neededItems.length+"",sub:"Out of stock",f:"needed",bg:"needed"},
+      {l:items.filter(function(i){return i.isProcessed;}).length+"",sub:"Processed",f:"processed",bg:"processed"}
     ];
     return /*#__PURE__*/React.createElement("div",{style:{display:"flex",gap:5,marginBottom:14}},mets.map(function(s){
       var isP=s.f==="pantry",pSt=isP&&summaryFilter==="stocked",pNd=isP&&summaryFilter==="needed",iLM=C.bg==="#ebebeb"||C.bg==="#f0f0f0";
@@ -11269,7 +11281,7 @@ Only output the JSON. No markdown.`;
       letterSpacing: 2,
       fontWeight: 700
     }
-  }, summaryFilter === "stocked" ? "Stocked items" : "Items needed"), /*#__PURE__*/React.createElement("button", {
+  }, summaryFilter === "stocked" ? "Stocked items" : summaryFilter === "processed" ? "Processed items" : "Items needed"), /*#__PURE__*/React.createElement("button", {
     onClick: () => { haptic("light"); setSummaryFilter("all"); },
     style: {
       background: "transparent",
@@ -11479,7 +11491,7 @@ Only output the JSON. No markdown.`;
       padding: 20,
       textAlign: "center"
     }
-  }, summaryFilter === "stocked" ? "No items stocked yet." : "You're fully stocked 🌿")), !showSettings && tab === "dishes" && /*#__PURE__*/React.createElement("div", {
+  }, summaryFilter === "stocked" ? "No items stocked yet." : summaryFilter === "processed" ? "No processed items in your pantry." : "You're fully stocked 🌿")), !showSettings && tab === "dishes" && /*#__PURE__*/React.createElement("div", {
     style: {
       height: "100%",
       overflowY: "auto",
@@ -13090,6 +13102,33 @@ Only output the JSON. No markdown.`;
         },
         style:{...pill(false),width:"100%",padding:"10px 0",fontSize:13,textAlign:"left",paddingLeft:12}
       },"🍽 Dine Out"),
+      // HOME COOKED / SKIPPED — both count as whole-food in the metrics, unlike Dine Out
+      /*#__PURE__*/React.createElement("div",{style:{display:"flex",gap:8}},
+        /*#__PURE__*/React.createElement("button",{
+          onClick:function(){
+            haptic("medium");
+            _setSwapTarget(function(prev){
+              return Object.assign({},prev,{plan:Object.assign({},prev.plan,
+                {[swapModal.day]:Object.assign({},prev.plan[swapModal.day],{[swapModal.mealCat]:MEAL_HOME_COOKED})})});
+            });
+            logActivity("dish_swapped", swapModal.day+" "+swapModal.mealCat+": "+swapModal.current+" → Home Cooked");
+            setSwapModal(null); setSwapError("");
+          },
+          style:{...pill(false),flex:1,padding:"10px 0",fontSize:13}
+        },"🍳 Home Cooked"),
+        /*#__PURE__*/React.createElement("button",{
+          onClick:function(){
+            haptic("medium");
+            _setSwapTarget(function(prev){
+              return Object.assign({},prev,{plan:Object.assign({},prev.plan,
+                {[swapModal.day]:Object.assign({},prev.plan[swapModal.day],{[swapModal.mealCat]:MEAL_SKIPPED})})});
+            });
+            logActivity("dish_swapped", swapModal.day+" "+swapModal.mealCat+": "+swapModal.current+" → Skipped");
+            setSwapModal(null); setSwapError("");
+          },
+          style:{...pill(false),flex:1,padding:"10px 0",fontSize:13}
+        },"🚫 Skipped")
+      ),
       // AI option
       /*#__PURE__*/React.createElement("button",{
         onClick:function(){
