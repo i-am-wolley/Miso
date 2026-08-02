@@ -15,12 +15,12 @@ const GEMINI_MODEL = "gemini-3.1-flash-lite";
 const PRICE_PER_INPUT_TOKEN_USD = 0.25 / 1e6;
 const PRICE_PER_OUTPUT_TOKEN_USD = 1.50 / 1e6;
 const DAILY_QUOTA_PER_HOUSEHOLD = 50;
-// Phase 7: reverted to log-only 2026-08-02 — function logs showed every single
-// request, before and after the earlier flip, logging "missing App Check token".
-// The client was never actually sending one; the App Check console reading that
-// looked like "verified traffic" was a misread. Re-flip only after confirming a
-// real token round-trips (see _getAppCheckToken in index.html).
-const ENFORCE_APP_CHECK = false;
+// Phase 7: re-flipped true 2026-08-02 (2nd attempt). Root cause of the earlier
+// "App attestation failed"/missing-token failures was the same wrong signing
+// certificate registered as the Google Sign-In fix below - the actual Play-signed
+// cert is now correctly registered in Firebase App Check too. If this breaks
+// native AI again, check `adb logcat | grep -i appcheck` before re-flipping back.
+const ENFORCE_APP_CHECK = true;
 
 function repairAndParse(str) {
   if (!str) return null;
