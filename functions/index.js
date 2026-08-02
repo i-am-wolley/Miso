@@ -11,7 +11,10 @@ const db = getFirestore();
 
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 const GEMINI_MODEL = "gemini-3.1-flash-lite";
-const DAILY_QUOTA_PER_HOUSEHOLD = 300;
+// Keep in sync with GEMINI_MODEL — update together on any future model switch.
+const PRICE_PER_INPUT_TOKEN_USD = 0.25 / 1e6;
+const PRICE_PER_OUTPUT_TOKEN_USD = 1.50 / 1e6;
+const DAILY_QUOTA_PER_HOUSEHOLD = 50;
 // Phase 7: App Check verification runs in log-only mode until real native traffic
 // has been observed passing in the Firebase console, then this flips to true.
 const ENFORCE_APP_CHECK = false;
@@ -85,6 +88,26 @@ async function checkAndIncrementQuota(householdCode) {
   });
 }
 
+// Admin-only usage/cost tracking on the same per-day doc the quota transaction above writes to.
+// aiQuota/{day} is structurally unreadable by any client (see firestore.rules), so no rules
+// change is needed to keep this admin-eyes-only. Best-effort — a failure here must not fail
+// the underlying AI request the household is waiting on.
+async function recordUsage(householdCode, inputTokens, outputTokens) {
+  try {
+    var costUsd = inputTokens * PRICE_PER_INPUT_TOKEN_USD + outputTokens * PRICE_PER_OUTPUT_TOKEN_USD;
+    var today = new Date().toISOString().slice(0, 10);
+    var ref = db.collection("households").doc(householdCode).collection("aiQuota").doc(today);
+    await ref.set({
+      inputTokens: FieldValue.increment(inputTokens),
+      outputTokens: FieldValue.increment(outputTokens),
+      costUsd: FieldValue.increment(costUsd),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (e) {
+    logger.warn("[generateAiContent] recordUsage failed (non-fatal)", e.message);
+  }
+}
+
 async function callGemini(apiKey, { system, prompt, maxTokens, images }) {
   var parts = [];
   var fullText = system ? system + "\n\n" + prompt : prompt;
@@ -109,7 +132,13 @@ async function callGemini(apiKey, { system, prompt, maxTokens, images }) {
   var data = await res.json();
   var text = ((data.candidates || [])[0] && data.candidates[0].content && data.candidates[0].content.parts || [])
     .map(function (p) { return p.text || ""; }).join("").trim();
-  return { text: text, json: repairAndParse(text) };
+  var usage = data.usageMetadata || {};
+  return {
+    text: text,
+    json: repairAndParse(text),
+    inputTokens: usage.promptTokenCount || 0,
+    outputTokens: usage.candidatesTokenCount || 0
+  };
 }
 
 exports.generateAiContent = onRequest(
@@ -133,7 +162,8 @@ exports.generateAiContent = onRequest(
         maxTokens: body.maxTokens,
         images: body.images
       });
-      res.status(200).json(result);
+      await recordUsage(householdCode, result.inputTokens, result.outputTokens);
+      res.status(200).json({ text: result.text, json: result.json });
     } catch (e) {
       var status = e.status || 500;
       var message = e.message || "Internal error";
